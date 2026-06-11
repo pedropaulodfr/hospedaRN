@@ -1,0 +1,376 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [postgis, uuidOssp(map: "uuid-ossp")]
+}
+
+// ===========================
+// ENUMS
+// ===========================
+
+enum PerfilUsuario {
+  HOSPEDE
+  ESTABELECIMENTO
+  ADMIN
+}
+
+enum StatusReserva {
+  SOLICITADA
+  CONFIRMADA
+  AGUARDANDO_PAGAMENTO
+  FINALIZADA
+  CANCELADA
+}
+
+enum MetodoPagamento {
+  PIX
+  CARTAO
+  BOLETO
+}
+
+enum StatusPagamento {
+  PENDENTE
+  CONFIRMADO
+  ESTORNADO
+  CANCELADO
+}
+
+// ===========================
+// MODELS
+// ===========================
+
+model Usuario {
+  id                        String            @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  nome                      String            @db.VarChar(255)
+  email                     String            @unique @db.VarChar(255)
+  telefone                  String?           @db.VarChar(20)
+  senhaHash                 String            @map("senha_hash")
+  perfil                    PerfilUsuario     @default(HOSPEDE)
+  ativo                     Boolean           @default(true)
+  tokenAtualizacaoHash      String?           @map("token_atualizacao_hash")
+  tokenRecuperacaoSenha     String?           @map("token_recuperacao_senha")
+  expiracaoRecuperacaoSenha DateTime?         @map("expiracao_recuperacao_senha") @db.Timestamptz()
+  criadoEm                  DateTime          @default(now()) @map("criado_em") @db.Timestamptz()
+  atualizadoEm              DateTime          @updatedAt @map("atualizado_em") @db.Timestamptz()
+
+  // Relations
+  estabelecimentos Estabelecimento[] @relation("EstabelecimentoProprietario")
+  reservas         Reserva[]         @relation("HospedeReservas")
+  favoritos        Favorito[]
+  logsAuditoria    LogAuditoria[]
+
+  // Sub-usuários
+  criadoPorId                String?           @map("criado_por_id") @db.Uuid
+  estabelecimentoVinculadoId String?           @map("estabelecimento_vinculado_id") @db.Uuid
+  subPerfil                  String?           @map("sub_perfil") @db.VarChar(50)
+  permissoes                 String[]          @default([])
+
+  criadoPor                  Usuario?          @relation("UsuarioCriador", fields: [criadoPorId], references: [id])
+  usuariosCriados            Usuario[]         @relation("UsuarioCriador")
+  estabelecimentoVinculado   Estabelecimento?  @relation("EstabelecimentoSubUsuarios", fields: [estabelecimentoVinculadoId], references: [id])
+
+  @@map("Usuario")
+}
+
+model Cidade {
+  id           String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  nome         String        @db.VarChar(255)
+  estado       String        @default("RN") @db.VarChar(2)
+  latitude     Decimal       @db.Decimal(10, 8)
+  longitude    Decimal       @db.Decimal(11, 8)
+  /// @zod.custom.use(z.any())
+  localizacao  Unsupported("geometry(Point, 4326)")?
+  imagemUrl    String?       @map("imagem_url")
+  imagemS3Key  String?       @map("imagem_s3_key")
+  fotoPerfil   String?       @map("foto_perfil")
+  descricao    String?
+  ativo        Boolean       @default(true)
+  criadoEm     DateTime      @default(now()) @map("criado_em") @db.Timestamptz()
+  atualizadoEm DateTime      @updatedAt @map("atualizado_em") @db.Timestamptz()
+
+  // Relations
+  estabelecimentos Estabelecimento[]
+  eventosCidades   EventoCidade[]
+
+  @@map("Cidade")
+}
+
+model Estabelecimento {
+  id              String                    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  nome            String                    @db.VarChar(255)
+  descricao       String?
+  contato         String?                   @db.VarChar(50)
+  emailContato    String?                   @map("email_contato") @db.VarChar(255)
+  website         String?                   @db.VarChar(500)
+  endereco        String?
+  cep             String?                   @db.VarChar(10)
+  latitude        Decimal?                  @db.Decimal(10, 8)
+  longitude       Decimal?                  @db.Decimal(11, 8)
+  /// @zod.custom.use(z.any())
+  localizacao     Unsupported("geometry(Point, 4326)")?
+  ativo           Boolean                   @default(true)
+  notaMedia       Decimal                   @default(0) @map("nota_media") @db.Decimal(3, 2)
+  totalAvaliacoes Int                       @default(0) @map("total_avaliacoes")
+  cidadeId        String                    @map("cidade_id") @db.Uuid
+  proprietarioId  String                    @map("proprietario_id") @db.Uuid
+  fotoPerfil      String?                   @map("foto_perfil")
+  criadoEm        DateTime                  @default(now()) @map("criado_em") @db.Timestamptz()
+  atualizadoEm    DateTime                  @updatedAt @map("atualizado_em") @db.Timestamptz()
+
+  // Relations
+  cidade          Cidade                    @relation(fields: [cidadeId], references: [id])
+  proprietario    Usuario                   @relation("EstabelecimentoProprietario", fields: [proprietarioId], references: [id])
+  comodidades     EstabelecimentoComodidade[]
+  quartos         Quarto[]
+  reservas        Reserva[]
+  favoritos       Favorito[]
+  fotos           Foto[]                    @relation("EstabelecimentoFotos")
+  subUsuarios     Usuario[]                 @relation("EstabelecimentoSubUsuarios")
+
+  @@map("Estabelecimento")
+}
+
+model Comodidade {
+  id       String                      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  nome     String                      @unique @db.VarChar(100)
+  icone    String?                     @db.VarChar(100)
+  criadoEm DateTime                    @default(now()) @map("criado_em") @db.Timestamptz()
+
+  // Relations
+  estabelecimentos EstabelecimentoComodidade[]
+
+  @@map("Comodidade")
+}
+
+model EstabelecimentoComodidade {
+  estabelecimentoId String          @map("estabelecimento_id") @db.Uuid
+  comodidadeId       String          @map("comodidade_id") @db.Uuid
+
+  estabelecimento   Estabelecimento @relation(fields: [estabelecimentoId], references: [id], onDelete: Cascade)
+  comodidade        Comodidade      @relation(fields: [comodidadeId], references: [id], onDelete: Cascade)
+
+  @@id([estabelecimentoId, comodidadeId])
+  @@map("EstabelecimentoComodidade")
+}
+
+model TipoAcomodacao {
+  id        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  nome      String   @unique @db.VarChar(100)
+  descricao String?
+  criadoEm  DateTime @default(now()) @map("criado_em") @db.Timestamptz()
+
+  // Relations
+  quartos Quarto[]
+
+  @@map("TipoAcomodacao")
+}
+
+model Quarto {
+  id               String            @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  estabelecimentoId String            @map("estabelecimento_id") @db.Uuid
+  tipoAcomodacaoId String?           @map("tipo_acomodacao_id") @db.Uuid
+  nome             String            @db.VarChar(255)
+  capacidade       Int               @default(2)
+  quantidade       Int               @default(1)
+  descricao        String?
+  precoBase        Decimal           @default(0) @map("preco_base") @db.Decimal(10, 2)
+  ativo            Boolean           @default(true)
+  criadoEm         DateTime          @default(now()) @map("criado_em") @db.Timestamptz()
+  atualizadoEm     DateTime          @updatedAt @map("atualizado_em") @db.Timestamptz()
+
+  // Relations
+  estabelecimento   Estabelecimento   @relation(fields: [estabelecimentoId], references: [id], onDelete: Cascade)
+  tipoAcomodacao    TipoAcomodacao?   @relation(fields: [tipoAcomodacaoId], references: [id])
+  precos            PrecoQuarto[]
+  reservas          Reserva[]
+  bloqueiosData     BloqueioData[]
+  fotos             Foto[]            @relation("QuartoFotos")
+
+  @@map("Quarto")
+}
+
+model Temporada {
+  id               String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  nome             String        @db.VarChar(100)
+  dataInicio       DateTime      @map("data_inicio") @db.Date
+  dataFim          DateTime      @map("data_fim") @db.Date
+  percentualAjuste Decimal       @default(0) @map("percentual_ajuste") @db.Decimal(5, 2)
+  criadoEm         DateTime      @default(now()) @map("criado_em") @db.Timestamptz()
+  atualizadoEm     DateTime      @updatedAt @map("atualizado_em") @db.Timestamptz()
+
+  // Relations
+  precos PrecoQuarto[]
+
+  @@map("Temporada")
+}
+
+model PrecoQuarto {
+  quartoId    String    @map("quarto_id") @db.Uuid
+  temporadaId String    @map("temporada_id") @db.Uuid
+  valor       Decimal   @db.Decimal(10, 2)
+
+  quarto      Quarto    @relation(fields: [quartoId], references: [id], onDelete: Cascade)
+  temporada   Temporada @relation(fields: [temporadaId], references: [id], onDelete: Cascade)
+
+  @@id([quartoId, temporadaId])
+  @@map("PrecoQuarto")
+}
+
+model Foto {
+  id           String           @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  url          String
+  s3Key        String           @map("s3_key")
+  entidade     String           @db.VarChar(50)
+  entidadeId   String           @map("entidade_id") @db.Uuid
+  ordem        Int              @default(0)
+  isCapa       Boolean          @default(false) @map("is_capa")
+  criadoEm     DateTime         @default(now()) @map("criado_em") @db.Timestamptz()
+
+  // Virtual relations (polymorphic - managed in code)
+  estabelecimento Estabelecimento? @relation("EstabelecimentoFotos", fields: [entidadeId], references: [id], map: "foto_estabelecimento_fk")
+  quarto          Quarto?          @relation("QuartoFotos", fields: [entidadeId], references: [id], map: "foto_quarto_fk")
+
+  @@map("Foto")
+}
+
+model Reserva {
+  id                 String            @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  codigoReserva      String            @unique @map("codigo_reserva") @db.VarChar(20)
+  hospedeId          String            @map("hospede_id") @db.Uuid
+  estabelecimentoId  String            @map("estabelecimento_id") @db.Uuid
+  quartoId           String            @map("quarto_id") @db.Uuid
+  checkIn            DateTime          @map("check_in") @db.Date
+  checkOut           DateTime          @map("check_out") @db.Date
+  adultos            Int               @default(1)
+  criancas           Int               @default(0)
+  valorTotal         Decimal           @map("valor_total") @db.Decimal(10, 2)
+  status             StatusReserva     @default(SOLICITADA)
+  observacoes        String?
+  cancelamentoMotivo String?           @map("cancelamento_motivo")
+  criadoEm           DateTime          @default(now()) @map("criado_em") @db.Timestamptz()
+  atualizadoEm       DateTime          @updatedAt @map("atualizado_em") @db.Timestamptz()
+
+  // Relations
+  hospede            Usuario           @relation("HospedeReservas", fields: [hospedeId], references: [id])
+  estabelecimento    Estabelecimento   @relation(fields: [estabelecimentoId], references: [id])
+  quarto             Quarto            @relation(fields: [quartoId], references: [id])
+  pagamento          Pagamento?
+  avaliacao          Avaliacao?
+
+  @@map("Reserva")
+}
+
+model Pagamento {
+  id               String          @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  reservaId        String          @unique @map("reserva_id") @db.Uuid
+  codigoTransacao  String?         @map("codigo_transacao") @db.VarChar(255)
+  metodo           MetodoPagamento
+  comprovanteUrl   String?         @map("comprovante_url")
+  comprovanteS3Key String?         @map("comprovante_s3_key")
+  valor            Decimal         @db.Decimal(10, 2)
+  status           StatusPagamento @default(PENDENTE)
+  dadosPagamento   Json?           @map("dados_pagamento")
+  criadoEm         DateTime        @default(now()) @map("criado_em") @db.Timestamptz()
+  atualizadoEm     DateTime        @updatedAt @map("atualizado_em") @db.Timestamptz()
+
+  // Relations
+  reserva          Reserva         @relation(fields: [reservaId], references: [id])
+
+  @@map("Pagamento")
+}
+
+model Evento {
+  id           String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  nome         String         @db.VarChar(255)
+  descricao    String?
+  linkOficial  String?        @map("link_oficial") @db.VarChar(500)
+  dataInicio   DateTime       @map("data_inicio") @db.Date
+  dataFim      DateTime       @map("data_fim") @db.Date
+  imagemUrl    String?        @map("imagem_url")
+  imagemS3Key  String?        @map("imagem_s3_key")
+  ativo        Boolean        @default(true)
+  criadoEm     DateTime       @default(now()) @map("criado_em") @db.Timestamptz()
+  atualizadoEm DateTime       @updatedAt @map("atualizado_em") @db.Timestamptz()
+
+  // Relations
+  eventosCidades EventoCidade[]
+
+  @@map("Evento")
+}
+
+model EventoCidade {
+  eventoId String @map("evento_id") @db.Uuid
+  cidadeId String @map("cidade_id") @db.Uuid
+
+  evento   Evento @relation(fields: [eventoId], references: [id], onDelete: Cascade)
+  cidade   Cidade @relation(fields: [cidadeId], references: [id], onDelete: Cascade)
+
+  @@id([eventoId, cidadeId])
+  @@map("EventoCidade")
+}
+
+model Avaliacao {
+  id        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  reservaId String   @unique @map("reserva_id") @db.Uuid
+  nota      Int
+  comentario String?
+  criadoEm  DateTime @default(now()) @map("criado_em") @db.Timestamptz()
+  atualizadoEm DateTime @updatedAt @map("atualizado_em") @db.Timestamptz()
+
+  // Relations
+  reserva   Reserva  @relation(fields: [reservaId], references: [id], onDelete: Cascade)
+
+  @@map("Avaliacao")
+}
+
+model Favorito {
+  usuarioId         String          @map("usuario_id") @db.Uuid
+  estabelecimentoId String          @map("estabelecimento_id") @db.Uuid
+  criadoEm          DateTime        @default(now()) @map("criado_em") @db.Timestamptz()
+
+  usuario           Usuario         @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  estabelecimento   Estabelecimento @relation(fields: [estabelecimentoId], references: [id], onDelete: Cascade)
+
+  @@id([usuarioId, estabelecimentoId])
+  @@map("Favorito")
+}
+
+model LogAuditoria {
+  id              String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  usuarioId       String?  @map("usuario_id") @db.Uuid
+  acao            String   @db.VarChar(100)
+  entidade        String   @db.VarChar(100)
+  entidadeId      String?  @map("entidade_id") @db.Uuid
+  dadosAnteriores Json?    @map("dados_anteriores")
+  dadosNovos      Json?    @map("dados_novos")
+  enderecoIp      String?  @map("endereco_ip") @db.VarChar(50)
+  agenteUsuario   String?  @map("agente_usuario")
+  criadoEm        DateTime @default(now()) @map("criado_em") @db.Timestamptz()
+
+  // Relations
+  usuario         Usuario? @relation(fields: [usuarioId], references: [id])
+
+  @@map("LogAuditoria")
+}
+
+model BloqueioData {
+  id        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  quartoId  String   @map("quarto_id") @db.Uuid
+  data      DateTime @db.Date
+  motivo    String?  @db.VarChar(255)
+  criadoEm  DateTime @default(now()) @map("criado_em") @db.Timestamptz()
+
+  // Relations
+  quarto    Quarto   @relation(fields: [quartoId], references: [id], onDelete: Cascade)
+
+  @@unique([quartoId, data])
+  @@map("BloqueioData")
+}

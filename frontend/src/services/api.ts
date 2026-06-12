@@ -238,6 +238,7 @@ export const accommodationTypesApi = {
 
 export const fotosApi = {
   findByEstablishment: (id: string) => api.get(`/fotos/estabelecimento/${id}`),
+  findByRoom: (id: string) => api.get(`/fotos/quarto/${id}`),
   create: (data: any) => api.post('/fotos', data),
   update: (id: string, data: any) => api.patch(`/fotos/${id}`, data),
   delete: (id: string) => api.delete(`/fotos/${id}`),

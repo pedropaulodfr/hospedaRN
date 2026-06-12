@@ -25,4 +25,8 @@ export class FotosController {
   @Get('estabelecimento/:id')
   @ApiOperation({ summary: 'Lista fotos de um estabelecimento' })
   findByEstablishment(@Param('id') id: string) { return this.service.findByEstablishment(id); }
+
+  @Get('quarto/:id')
+  @ApiOperation({ summary: 'Lista fotos de um quarto' })
+  findByRoom(@Param('id') id: string) { return this.service.findByRoom(id); }
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Box,
   Typography,
@@ -8,6 +8,7 @@ import {
   Card,
   CardContent,
   CardActions,
+  CardMedia,
   IconButton,
   Dialog,
   DialogTitle,
@@ -32,6 +33,11 @@ import {
   TableRow,
   Switch,
   InputAdornment,
+  Checkbox,
+  FormControlLabel,
+  ImageList,
+  ImageListItem,
+  ImageListItemBar,
 } from '@mui/material';
 import {
   Add,
@@ -48,8 +54,11 @@ import {
   Settings,
   GridOn,
   Info,
+  Image,
+  CloudUpload,
+  Close,
 } from '@mui/icons-material';
-import { establishmentsApi, roomsApi, accommodationTypesApi } from '../../services/api';
+import { establishmentsApi, roomsApi, accommodationTypesApi, fotosApi, uploadsApi } from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
 import toast from 'react-hot-toast';
 import dayjs from 'dayjs';
@@ -95,6 +104,15 @@ interface Room {
   tipoAcomodacao?: RoomType;
   precos?: RoomPrice[];
   bloqueiosData?: DateBlock[];
+}
+
+interface RoomPhoto {
+  id: string;
+  url: string;
+  s3Key: string;
+  ordem: number;
+  isCapa: boolean;
+  criadoEm: string;
 }
 
 interface Establishment {
@@ -143,6 +161,15 @@ export default function EstRooms() {
   // Block Date Form
   const [blockDateValue, setBlockDateValue] = useState('');
   const [blockReason, setBlockReason] = useState('');
+
+  // Room Photos Dialog
+  const [photosDialogOpen, setPhotosDialogOpen] = useState(false);
+  const [photosRoom, setPhotosRoom] = useState<Room | null>(null);
+  const [roomPhotos, setRoomPhotos] = useState<RoomPhoto[]>([]);
+  const [photosLoading, setPhotosLoading] = useState(false);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadPreview, setUploadPreview] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Load Initial Data: User's establishments and room types
   useEffect(() => {
@@ -415,6 +442,69 @@ export default function EstRooms() {
     } catch (error: any) {
       console.error(error);
       toast.error(error.response?.data?.message || 'Erro ao bloquear data');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Fetch Room Photos
+  const fetchRoomPhotos = async (roomId: string) => {
+    try {
+      setPhotosLoading(true);
+      const res = await fotosApi.findByRoom(roomId);
+      setRoomPhotos(res.data.data || res.data || []);
+    } catch (error) {
+      console.error(error);
+      toast.error('Erro ao carregar fotos do quarto');
+    } finally {
+      setPhotosLoading(false);
+    }
+  };
+
+  // Open Photos Dialog
+  const handleOpenPhotos = async (room: Room) => {
+    setPhotosRoom(room);
+    setUploadFile(null);
+    setUploadPreview(null);
+    setPhotosDialogOpen(true);
+    await fetchRoomPhotos(room.id);
+  };
+
+  // Upload Room Photo
+  const handleUploadRoomPhoto = async () => {
+    if (!uploadFile || !photosRoom) return;
+    try {
+      setSaving(true);
+      const uploadRes = await uploadsApi.uploadImage('quartos', uploadFile);
+      const uploaded = uploadRes.data.data || uploadRes.data;
+      await fotosApi.create({
+        url: uploaded.url,
+        s3Key: uploaded.s3Key || uploaded.key,
+        quartoId: photosRoom.id,
+      });
+      toast.success('Foto adicionada com sucesso');
+      setUploadFile(null);
+      setUploadPreview(null);
+      await fetchRoomPhotos(photosRoom.id);
+    } catch (error: any) {
+      console.error(error);
+      toast.error(error.response?.data?.message || 'Erro ao fazer upload da foto');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Delete Room Photo
+  const handleDeleteRoomPhoto = async (fotoId: string) => {
+    if (!photosRoom) return;
+    try {
+      setSaving(true);
+      await fotosApi.delete(fotoId);
+      toast.success('Foto removida com sucesso');
+      await fetchRoomPhotos(photosRoom.id);
+    } catch (error: any) {
+      console.error(error);
+      toast.error(error.response?.data?.message || 'Erro ao remover foto');
     } finally {
       setSaving(false);
     }
@@ -745,21 +835,38 @@ export default function EstRooms() {
                     justifyContent: 'space-between',
                   }}
                 >
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    startIcon={<CalendarMonth />}
-                    onClick={() => handleOpenPrices(room)}
-                    sx={{
-                      borderRadius: '8px',
-                      textTransform: 'none',
-                      fontWeight: 600,
-                      borderColor: 'primary.main',
-                      color: 'primary.main',
-                    }}
-                  >
-                    Preços & Agenda
-                  </Button>
+                  <Box sx={{ display: 'flex', gap: 1 }}>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<Image />}
+                      onClick={() => handleOpenPhotos(room)}
+                      sx={{
+                        borderRadius: '8px',
+                        textTransform: 'none',
+                        fontWeight: 600,
+                        borderColor: 'primary.main',
+                        color: 'primary.main',
+                      }}
+                    >
+                      Fotos
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<CalendarMonth />}
+                      onClick={() => handleOpenPrices(room)}
+                      sx={{
+                        borderRadius: '8px',
+                        textTransform: 'none',
+                        fontWeight: 600,
+                        borderColor: 'primary.main',
+                        color: 'primary.main',
+                      }}
+                    >
+                      Preços & Agenda
+                    </Button>
+                  </Box>
 
                   <Box>
                     <Tooltip title="Editar quarto">
@@ -928,6 +1035,87 @@ export default function EstRooms() {
             sx={{ borderRadius: '8px', textTransform: 'none', fontWeight: 600 }}
           >
             {saving ? 'Excluindo...' : 'Sim, Excluir'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Room Photos Dialog */}
+      <Dialog
+        open={photosDialogOpen}
+        onClose={() => { setPhotosDialogOpen(false); setUploadPreview(null); }}
+        maxWidth="sm"
+        fullWidth
+        sx={{ '& .MuiDialog-paper': { borderRadius: '16px' } }}
+      >
+        <DialogTitle sx={{ fontFamily: '"Outfit", sans-serif', fontWeight: 700 }}>
+          Fotos: {photosRoom?.nome}
+        </DialogTitle>
+        <DialogContent>
+          {photosLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress /></Box>
+          ) : roomPhotos.length === 0 ? (
+            <Box sx={{ textAlign: 'center', py: 4 }}>
+              <Image sx={{ fontSize: 48, color: 'text.secondary', mb: 1 }} />
+              <Typography color="text.secondary">Nenhuma foto cadastrada para este quarto.</Typography>
+            </Box>
+          ) : (
+            <ImageList cols={2} gap={8}>
+              {roomPhotos.map((foto) => (
+                <ImageListItem key={foto.id}>
+                  <img src={foto.url} alt={`Foto ${foto.ordem}`} style={{ borderRadius: 8, height: 160, objectFit: 'cover' }} />
+                  <ImageListItemBar
+                    sx={{ background: 'linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 100%)' }}
+                    actionIcon={
+                      <IconButton size="small" sx={{ color: '#fff' }} onClick={() => handleDeleteRoomPhoto(foto.id)} disabled={saving}>
+                        <Delete fontSize="small" />
+                      </IconButton>
+                    }
+                  />
+                </ImageListItem>
+              ))}
+            </ImageList>
+          )}
+
+          <Box sx={{ mt: 3, borderTop: '1px solid', borderColor: 'divider', pt: 3 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2 }}>
+              Adicionar nova foto
+            </Typography>
+            <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) {
+                if (!file.type.startsWith('image/')) { toast.error('Selecione apenas imagens'); return; }
+                if (file.size > 10 * 1024 * 1024) { toast.error('Máximo 10MB'); return; }
+                setUploadFile(file);
+                setUploadPreview(URL.createObjectURL(file));
+              }
+            }} />
+            {!uploadPreview ? (
+              <Box onClick={() => fileInputRef.current?.click()} sx={{ border: '2px dashed', borderColor: 'divider', borderRadius: 2, p: 3, textAlign: 'center', cursor: 'pointer', '&:hover': { borderColor: 'primary.main', bgcolor: 'rgba(0, 151, 167, 0.04)' } }}>
+                <CloudUpload sx={{ fontSize: 36, color: 'text.secondary', mb: 0.5 }} />
+                <Typography variant="body2" color="text.secondary">Clique para selecionar imagem</Typography>
+              </Box>
+            ) : (
+              <Box sx={{ position: 'relative' }}>
+                <IconButton onClick={() => { setUploadFile(null); setUploadPreview(null); }} sx={{ position: 'absolute', top: 4, right: 4, bgcolor: 'rgba(0,0,0,0.5)', color: '#fff' }} size="small">
+                  <Close fontSize="small" />
+                </IconButton>
+                <img src={uploadPreview} alt="Preview" style={{ width: '100%', maxHeight: 240, objectFit: 'contain', borderRadius: 8, backgroundColor: '#000' }} />
+              </Box>
+            )}
+            <Button
+              variant="contained"
+              fullWidth
+              disabled={!uploadFile || saving}
+              onClick={handleUploadRoomPhoto}
+              sx={{ mt: 2, borderRadius: '8px', textTransform: 'none', fontWeight: 600, background: 'linear-gradient(135deg, #0097A7, #00BCD4)' }}
+            >
+              {saving ? <CircularProgress size={20} color="inherit" /> : 'Fazer Upload'}
+            </Button>
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ p: 2.5 }}>
+          <Button onClick={() => { setPhotosDialogOpen(false); setUploadPreview(null); }} variant="contained" sx={{ textTransform: 'none', fontWeight: 600, borderRadius: '8px' }}>
+            Fechar
           </Button>
         </DialogActions>
       </Dialog>

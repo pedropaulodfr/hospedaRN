@@ -22,10 +22,37 @@ export class RegisterDto {
   @MinLength(6, { message: 'Senha deve ter pelo menos 6 caracteres' })
   senha: string;
 
-  @ApiPropertyOptional({ example: '84999999999' })
+  @ApiProperty({ example: '84999999999' })
+  @IsString()
+  telefone: string;
+
+  @ApiProperty({ example: '123.456.789-00' })
+  @IsString()
+  cpf: string;
+
+  @ApiProperty({ example: '1995-10-25' })
+  @IsString()
+  dataNascimento: string;
+
+  @ApiPropertyOptional({ example: '1.234.567' })
   @IsOptional()
   @IsString()
-  telefone?: string;
+  rg?: string;
+
+  @ApiPropertyOptional({ example: 'Brasileira' })
+  @IsOptional()
+  @IsString()
+  nacionalidade?: string;
+
+  @ApiPropertyOptional({ example: 'Maria (84) 98888-8888' })
+  @IsOptional()
+  @IsString()
+  contatoEmergencia?: string;
+
+  @ApiPropertyOptional({ example: 'Rua das Flores, 123, Natal - RN' })
+  @IsOptional()
+  @IsString()
+  endereco?: string;
 
   @ApiPropertyOptional({ enum: PerfilUsuario, default: PerfilUsuario.HOSPEDE })
   @IsOptional()

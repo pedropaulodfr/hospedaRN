@@ -76,6 +76,7 @@ model Usuario {
   criadoPor                  Usuario?          @relation("UsuarioCriador", fields: [criadoPorId], references: [id])
   usuariosCriados            Usuario[]         @relation("UsuarioCriador")
   estabelecimentoVinculado   Estabelecimento?  @relation("EstabelecimentoSubUsuarios", fields: [estabelecimentoVinculadoId], references: [id])
+  hospede                    Hospede?
 
   @@map("Usuario")
 }
@@ -373,4 +374,22 @@ model BloqueioData {
 
   @@unique([quartoId, data])
   @@map("BloqueioData")
+}
+
+model Hospede {
+  id                String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  usuarioId         String    @unique @map("usuario_id") @db.Uuid
+  cpf               String    @db.VarChar(14)
+  dataNascimento    DateTime  @map("data_nascimento") @db.Date
+  rg                String?   @db.VarChar(20)
+  nacionalidade     String?   @db.VarChar(100)
+  contatoEmergencia String?   @map("contato_emergencia") @db.VarChar(255)
+  endereco          String?
+  criadoEm          DateTime  @default(now()) @map("criado_em") @db.Timestamptz()
+  atualizadoEm      DateTime  @updatedAt @map("atualizado_em") @db.Timestamptz()
+
+  // Relations
+  usuario           Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@map("Hospede")
 }

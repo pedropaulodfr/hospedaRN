@@ -15,12 +15,16 @@ export const api = axios.create({
   withCredentials: false,
 });
 
-// Request interceptor — inject access token
+// Request interceptor — inject access token and handle FormData
 api.interceptors.request.use(
   (config) => {
     const token = useAuthStore.getState().accessToken;
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
+    }
+    // Let the browser set Content-Type with boundary for FormData
+    if (config.data instanceof FormData) {
+      delete config.headers['Content-Type'];
     }
     return config;
   },
@@ -138,6 +142,7 @@ export const establishmentsApi = {
 
 export const roomsApi = {
   getByEstablishment: (id: string) => api.get(`/quartos/estabelecimento/${id}`),
+  getSeasons: () => api.get('/quartos/temporadas'),
   getOne: (id: string) => api.get(`/quartos/${id}`),
   checkAvailability: (id: string, checkIn: string, checkOut: string) =>
     api.get(`/quartos/${id}/availability`, { params: { checkIn, checkOut } }),
@@ -166,6 +171,11 @@ export const paymentsApi = {
   getByReservation: (id: string) => api.get(`/pagamentos/reserva/${id}`),
   generatePix: (reservationId: string) => api.get(`/pagamentos/pix/${reservationId}`),
   confirm: (id: string) => api.post(`/pagamentos/${id}/confirm`),
+  uploadComprovante: (id: string, file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post(`/pagamentos/${id}/comprovante`, formData);
+  },
 };
 
 export const eventsApi = {
@@ -190,7 +200,7 @@ export const favoritesApi = {
 export const reportsApi = {
   dashboard: () => api.get('/reports/dashboard'),
   byCity: () => api.get('/reports/reservas/by-cidade'),
-  byStatus: (establishmentId?: string) => api.get('/reports/reservas/by-status', { params: { establishmentId } }),
+  byStatus: (estabelecimentoId?: string) => api.get('/reports/reservas/by-status', { params: { estabelecimentoId } }),
   occupancy: (establishmentId: string, month: number, year: number) =>
     api.get(`/reports/occupancy/${establishmentId}`, { params: { month, year } }),
   upcomingEvents: () => api.get('/reports/eventos/upcoming'),
@@ -209,16 +219,12 @@ export const uploadsApi = {
   uploadImage: (folder: string, file: File) => {
     const formData = new FormData();
     formData.append('file', file);
-    return api.post(`/uploads/image/${folder}`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
+    return api.post(`/uploads/image/${folder}`, formData);
   },
   uploadFile: (folder: string, file: File) => {
     const formData = new FormData();
     formData.append('file', file);
-    return api.post(`/uploads/file/${folder}`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
+    return api.post(`/uploads/file/${folder}`, formData);
   },
 };
 

@@ -16,6 +16,6 @@ export class PaymentsController {
   @Post(':id/comprovante')
   @UseInterceptors(FileInterceptor('file'))
   uploadComprovante(@Param('id') id: string, @UploadedFile() file: Express.Multer.File) {
-    return this.service.uploadComprovante(id, file.buffer, file.originalname);
+    return this.service.uploadComprovante(id, file.buffer, file.originalname, file.mimetype);
   }
 }

@@ -9,7 +9,7 @@ export class ReportsService {
     const [totalUsers, totalEstablishments, totalReservations, totalRevenue] = await Promise.all([
       this.prisma.usuario.count(),
       this.prisma.estabelecimento.count({ where: { ativo: true } }),
-      this.prisma.reserva.count(),
+      this.prisma.reserva.count({ where: { status: { not: 'CANCELADA' } } }),
       this.prisma.reserva.aggregate({
         where: { status: { in: ['CONFIRMADA', 'FINALIZADA'] } },
         _sum: { valorTotal: true },

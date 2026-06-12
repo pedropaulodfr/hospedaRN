@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -31,6 +31,8 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const redirectUrl = searchParams.get('redirect');
   const setAuth = useAuthStore((state) => state.setAuth);
 
   const {
@@ -69,7 +71,7 @@ export default function LoginPage() {
       } else if (user.role === 'ESTABLISHMENT') {
         navigate('/estabelecimento');
       } else {
-        navigate('/hospede');
+        navigate(redirectUrl || '/hospede');
       }
     } catch (error: any) {
       console.error(error);

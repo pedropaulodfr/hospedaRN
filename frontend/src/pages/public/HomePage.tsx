@@ -283,7 +283,7 @@ export default function HomePage() {
             Explore as cidades do RN
           </Typography>
           <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 500 }}>
-            Desde as dunas de Natal até as piscinas naturais de Baía Formosa — cada cidade tem uma história única.
+            Explore cidades repletas de história, cultura, gastronomia e belezas naturais.
           </Typography>
         </Box>
 

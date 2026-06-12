@@ -22,6 +22,13 @@ export class RoomsController {
   }
 
   @Public()
+  @Get('temporadas')
+  @ApiOperation({ summary: 'Lista todas as temporadas' })
+  findSeasons() {
+    return this.service.findSeasons();
+  }
+
+  @Public()
   @Get(':id')
   @ApiOperation({ summary: 'Detalhes de um quarto' })
   findOne(@Param('id') id: string) {

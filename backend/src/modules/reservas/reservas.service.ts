@@ -16,7 +16,18 @@ function generateBookingCode(): string {
 
 const RESERVATION_INCLUDE = {
   hospede: { select: { id: true, nome: true, email: true, telefone: true } },
-  estabelecimento: { select: { id: true, nome: true, contato: true } },
+  estabelecimento: {
+    select: {
+      id: true,
+      nome: true,
+      contato: true,
+      endereco: true,
+      emailContato: true,
+      website: true,
+      cidade: { select: { id: true, nome: true, estado: true } },
+      fotos: { select: { id: true, url: true, isCapa: true } },
+    },
+  },
   quarto: { select: { id: true, nome: true, capacidade: true } },
   pagamento: true,
   avaliacao: true,
@@ -151,8 +162,8 @@ export class ReservationsService {
 
   async finalize(id: string) {
     const reserva = await this.findOne(id);
-    if (reserva.status !== 'CONFIRMADA') {
-      throw new BadRequestException('Somente reservas CONFIRMADAS podem ser finalizadas');
+    if (reserva.status !== 'CONFIRMADA' && reserva.status !== 'AGUARDANDO_PAGAMENTO') {
+      throw new BadRequestException('Somente reservas CONFIRMADAS ou em AGUARDANDO_PAGAMENTO podem ser finalizadas');
     }
     return this.prisma.reserva.update({
       where: { id },

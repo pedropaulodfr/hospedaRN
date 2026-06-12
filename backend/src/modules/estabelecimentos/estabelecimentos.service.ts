@@ -213,9 +213,14 @@ export class EstablishmentsService {
         cidade: true,
         proprietario: { select: { id: true, nome: true, email: true, telefone: true } },
         comodidades: { include: { comodidade: true } },
+        fotos: { select: { id: true, url: true, isCapa: true, ordem: true } },
         quartos: {
           where: { ativo: true },
-          include: { tipoAcomodacao: true, precos: { include: { temporada: true } } },
+          include: {
+            tipoAcomodacao: true,
+            precos: { include: { temporada: true } },
+            fotos: { select: { id: true, url: true, isCapa: true, ordem: true } },
+          },
         },
         _count: { select: { reservas: { where: { status: 'FINALIZADA' } } } },
       },

@@ -18,8 +18,8 @@ export class PaymentsService {
     });
   }
 
-  async uploadComprovante(paymentId: string, buffer: Buffer, filename: string) {
-    const result = await this.uploads.uploadFile(buffer, filename, 'application/pdf', 'comprovantes');
+  async uploadComprovante(paymentId: string, buffer: Buffer, filename: string, mimetype: string) {
+    const result = await this.uploads.uploadFile(buffer, filename, mimetype, 'comprovantes');
     return this.prisma.pagamento.update({
       where: { id: paymentId },
       data: { comprovanteUrl: result.url, comprovanteS3Key: result.s3Key, status: 'CONFIRMADO' },

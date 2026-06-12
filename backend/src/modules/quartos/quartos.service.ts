@@ -137,4 +137,10 @@ export class RoomsService {
 
     return pricePerNight * nights;
   }
+
+  async findSeasons() {
+    return this.prisma.temporada.findMany({
+      orderBy: { dataInicio: 'asc' },
+    });
+  }
 }

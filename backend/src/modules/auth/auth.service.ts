@@ -36,35 +36,67 @@ export class AuthService {
       throw new ConflictException('E-mail já cadastrado');
     }
 
+    if (dto.cpf) {
+      const existingCpf = await this.prisma.hospede.findFirst({
+        where: { cpf: dto.cpf },
+      });
+      if (existingCpf) {
+        throw new ConflictException('CPF já cadastrado');
+      }
+    }
+
     const senhaHash = await bcrypt.hash(dto.senha, 12);
 
-    const usuario = await this.prisma.usuario.create({
-      data: {
-        nome: dto.nome,
-        email: dto.email,
-        telefone: dto.telefone,
-        senhaHash,
-        perfil: dto.perfil || 'HOSPEDE',
-      },
-      select: {
-        id: true,
-        nome: true,
-        email: true,
-        telefone: true,
-        perfil: true,
-        ativo: true,
-        criadoEm: true,
-      },
+    const result = await this.prisma.$transaction(async (tx) => {
+      const usuario = await tx.usuario.create({
+        data: {
+          nome: dto.nome,
+          email: dto.email,
+          telefone: dto.telefone,
+          senhaHash,
+          perfil: dto.perfil || 'HOSPEDE',
+        },
+      });
+
+      let hospede: any = null;
+      if (usuario.perfil === 'HOSPEDE') {
+        hospede = await tx.hospede.create({
+          data: {
+            usuarioId: usuario.id,
+            cpf: dto.cpf,
+            dataNascimento: new Date(dto.dataNascimento),
+            rg: dto.rg,
+            nacionalidade: dto.nacionalidade,
+            contatoEmergencia: dto.contatoEmergencia,
+            endereco: dto.endereco,
+          },
+        });
+      }
+
+      return { usuario, hospede };
     });
 
-    const tokens = await this.generateTokens(usuario.id, usuario.email, usuario.perfil);
+    const tokens = await this.generateTokens(result.usuario.id, result.usuario.email, result.usuario.perfil);
 
-    return { usuario, ...tokens };
+    const { id, nome, email, telefone, perfil, ativo, criadoEm } = result.usuario;
+    const usuarioRes = {
+      id,
+      nome,
+      email,
+      telefone,
+      perfil,
+      ativo,
+      criadoEm,
+      hospede: result.hospede,
+    };
+
+    return { usuario: usuarioRes, ...tokens };
   }
 
   async login(dto: LoginDto) {
     const usuario = await this.prisma.usuario.findUnique({
       where: { email: dto.email },
+      include: { hospede: true },
     });
 
     if (!usuario || !usuario.ativo) {

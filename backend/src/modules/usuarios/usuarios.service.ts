@@ -25,6 +25,7 @@ const USER_SELECT = {
   subPerfil: true,
   permissoes: true,
   estabelecimentoVinculadoId: true,
+  hospede: true,
 };
 
 @Injectable()

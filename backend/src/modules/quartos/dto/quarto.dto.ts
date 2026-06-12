@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsNumber, IsUUID, IsDate, IsEnum } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsUUID, IsDate, IsEnum, IsBoolean } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 
@@ -37,6 +37,11 @@ export class CreateRoomDto {
   @IsNumber()
   @Type(() => Number)
   precoBase: number;
+
+  @ApiPropertyOptional({ default: true })
+  @IsOptional()
+  @IsBoolean()
+  ativo?: boolean;
 }
 
 export class UpdateRoomDto {
@@ -72,6 +77,11 @@ export class UpdateRoomDto {
   @IsNumber()
   @Type(() => Number)
   precoBase?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  ativo?: boolean;
 }
 
 export class CreateRoomPriceDto {

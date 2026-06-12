@@ -19,6 +19,7 @@ import { ReviewsModule } from './modules/avaliacoes/avaliacoes.module';
 import { FavoritesModule } from './modules/favoritos/favoritos.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { UploadsModule } from './modules/uploads/uploads.module';
+import { FotosModule } from './modules/fotos/fotos.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { MapsModule } from './modules/maps/maps.module';
@@ -56,6 +57,7 @@ import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
     ReportsModule,
     AuditModule,
     MapsModule,
+    FotosModule,
   ],
   providers: [
     {

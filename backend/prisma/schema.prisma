@@ -226,18 +226,17 @@ model PrecoQuarto {
 }
 
 model Foto {
-  id           String           @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  url          String
-  s3Key        String           @map("s3_key")
-  entidade     String           @db.VarChar(50)
-  entidadeId   String           @map("entidade_id") @db.Uuid
-  ordem        Int              @default(0)
-  isCapa       Boolean          @default(false) @map("is_capa")
-  criadoEm     DateTime         @default(now()) @map("criado_em") @db.Timestamptz()
+  id                String           @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  url               String
+  s3Key             String           @map("s3_key")
+  estabelecimentoId String?          @map("estabelecimento_id") @db.Uuid
+  quartoId          String?          @map("quarto_id") @db.Uuid
+  ordem             Int              @default(0)
+  isCapa            Boolean          @default(false) @map("is_capa")
+  criadoEm          DateTime         @default(now()) @map("criado_em") @db.Timestamptz()
 
-  // Virtual relations (polymorphic - managed in code)
-  estabelecimento Estabelecimento? @relation("EstabelecimentoFotos", fields: [entidadeId], references: [id], map: "foto_estabelecimento_fk")
-  quarto          Quarto?          @relation("QuartoFotos", fields: [entidadeId], references: [id], map: "foto_quarto_fk")
+  estabelecimento Estabelecimento? @relation("EstabelecimentoFotos", fields: [estabelecimentoId], references: [id], map: "foto_estabelecimento_fk")
+  quarto          Quarto?          @relation("QuartoFotos", fields: [quartoId], references: [id], map: "foto_quarto_fk")
 
   @@map("Foto")
 }

@@ -14,7 +14,7 @@ export class FotosService {
 
     if (dto.isCapa) {
       await this.prisma.foto.updateMany({
-        where: { entidade: 'estabelecimento', entidadeId: dto.estabelecimentoId, isCapa: true },
+        where: { estabelecimentoId: dto.estabelecimentoId, isCapa: true },
         data: { isCapa: false },
       });
     }
@@ -23,8 +23,7 @@ export class FotosService {
       data: {
         url: dto.url,
         s3Key: dto.s3Key,
-        entidade: 'estabelecimento',
-        entidadeId: dto.estabelecimentoId,
+        estabelecimentoId: dto.estabelecimentoId,
         isCapa: dto.isCapa ?? false,
         ordem: dto.ordem ?? 0,
       },
@@ -37,7 +36,7 @@ export class FotosService {
 
     if (dto.isCapa) {
       await this.prisma.foto.updateMany({
-        where: { entidade: 'estabelecimento', entidadeId: foto.entidadeId, isCapa: true, id: { not: id } },
+        where: { estabelecimentoId: foto.estabelecimentoId, isCapa: true, id: { not: id } },
         data: { isCapa: false },
       });
     }
@@ -53,7 +52,7 @@ export class FotosService {
 
   async findByEstablishment(estabelecimentoId: string) {
     return this.prisma.foto.findMany({
-      where: { entidade: 'estabelecimento', entidadeId: estabelecimentoId },
+      where: { estabelecimentoId },
       orderBy: { ordem: 'asc' },
     });
   }

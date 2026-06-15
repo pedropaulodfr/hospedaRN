@@ -24,7 +24,7 @@ export class RoomsService {
 
   async findByEstablishment(estabelecimentoId: string) {
     return this.prisma.quarto.findMany({
-      where: { estabelecimentoId, ativo: true },
+      where: { estabelecimentoId },
       include: {
         tipoAcomodacao: true,
         precos: { include: { temporada: true } },

@@ -1,11 +1,43 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { CreateTipoAcomodacaoDto } from './dto/tipo-acomodacao.dto';
 @Injectable()
 export class TiposAcomodacaoService {
   constructor(private prisma: PrismaService) {}
-  async create(dto: CreateTipoAcomodacaoDto) { return this.prisma.tipoAcomodacao.create({ data: dto }); }
+  async create(dto: CreateTipoAcomodacaoDto, userId: string) {
+    const user = await this.prisma.usuario.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('Usuário não encontrado');
+
+    let estabelecimentoId = dto.estabelecimentoId;
+    if (user.perfil === 'ESTABELECIMENTO') {
+      const est = await this.prisma.estabelecimento.findFirst({
+        where: { proprietarioId: userId },
+        select: { id: true },
+      });
+      if (!est) throw new ForbiddenException('Estabelecimento não encontrado para este usuário');
+      estabelecimentoId = est.id;
+    }
+
+    return this.prisma.tipoAcomodacao.create({
+      data: {
+        nome: dto.nome,
+        descricao: dto.descricao,
+        estabelecimentoId,
+      },
+    });
+  }
   async findAll() { return this.prisma.tipoAcomodacao.findMany({ orderBy: { nome: 'asc' } }); }
+  async findByEstablishment(estabelecimentoId: string) {
+    return this.prisma.tipoAcomodacao.findMany({
+      where: {
+        OR: [
+          { estabelecimentoId: null },
+          { estabelecimentoId },
+        ],
+      },
+      orderBy: { nome: 'asc' },
+    });
+  }
   async findOne(id: string) {
     const at = await this.prisma.tipoAcomodacao.findUnique({ where: { id } });
     if (!at) throw new NotFoundException('Tipo nao encontrado');

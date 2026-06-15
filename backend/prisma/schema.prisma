@@ -135,6 +135,7 @@ model Estabelecimento {
   favoritos       Favorito[]
   fotos           Foto[]                    @relation("EstabelecimentoFotos")
   subUsuarios     Usuario[]                 @relation("EstabelecimentoSubUsuarios")
+  tiposAcomodacao TipoAcomodacao[]
 
   @@map("Estabelecimento")
 }
@@ -163,13 +164,15 @@ model EstabelecimentoComodidade {
 }
 
 model TipoAcomodacao {
-  id        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  nome      String   @unique @db.VarChar(100)
-  descricao String?
-  criadoEm  DateTime @default(now()) @map("criado_em") @db.Timestamptz()
+  id                String          @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  nome              String          @db.VarChar(100)
+  descricao         String?
+  estabelecimentoId String?         @map("estabelecimento_id") @db.Uuid
+  criadoEm          DateTime        @default(now()) @map("criado_em") @db.Timestamptz()
 
   // Relations
-  quartos Quarto[]
+  estabelecimento Estabelecimento? @relation(fields: [estabelecimentoId], references: [id])
+  quartos         Quarto[]
 
   @@map("TipoAcomodacao")
 }

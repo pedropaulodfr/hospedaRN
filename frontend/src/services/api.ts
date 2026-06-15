@@ -234,6 +234,10 @@ export const amenitiesApi = {
 
 export const accommodationTypesApi = {
   getAll: () => api.get('/tipos-acomodacao'),
+  getByEstablishment: (id: string) => api.get(`/tipos-acomodacao/estabelecimento/${id}`),
+  create: (data: any) => api.post('/tipos-acomodacao', data),
+  update: (id: string, data: any) => api.patch(`/tipos-acomodacao/${id}`, data),
+  delete: (id: string) => api.delete(`/tipos-acomodacao/${id}`),
 };
 
 export const fotosApi = {

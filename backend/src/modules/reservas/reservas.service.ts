@@ -28,7 +28,7 @@ const RESERVATION_INCLUDE = {
       fotos: { select: { id: true, url: true, isCapa: true } },
     },
   },
-  quarto: { select: { id: true, nome: true, capacidade: true } },
+  quarto: { select: { id: true, nome: true, capacidade: true, fotos: { select: { id: true, url: true, isCapa: true } } } },
   pagamento: true,
   avaliacao: true,
 };

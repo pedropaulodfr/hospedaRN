@@ -171,17 +171,18 @@ export default function EstRooms() {
   const [uploadPreview, setUploadPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // New Accommodation Type Dialog
+  const [typeDialogOpen, setTypeDialogOpen] = useState(false);
+  const [newTypeName, setNewTypeName] = useState('');
+  const [savingType, setSavingType] = useState(false);
+
   // Load Initial Data: User's establishments and room types
   useEffect(() => {
     const loadInitialData = async () => {
       try {
         setLoading(true);
         
-        // 1. Fetch Room Types
-        const typesRes = await accommodationTypesApi.getAll();
-        setRoomTypes(typesRes.data.data || typesRes.data || []);
-
-        // 2. Fetch Seasons
+        // 1. Fetch Seasons
         try {
           const seasonsRes = await roomsApi.getSeasons();
           setSeasons(seasonsRes.data.data || seasonsRes.data || []);
@@ -233,8 +234,6 @@ export default function EstRooms() {
     try {
       setRoomsLoading(true);
       const res = await roomsApi.getByEstablishment(establishmentId);
-      // Backend findByEstablishment returns rooms where active=true, or all if we handle it
-      // Let's set rooms
       setRooms(res.data.data || res.data || []);
     } catch (error) {
       console.error(error);
@@ -244,11 +243,22 @@ export default function EstRooms() {
     }
   };
 
+  const fetchRoomTypes = async (establishmentId: string) => {
+    try {
+      const res = await accommodationTypesApi.getByEstablishment(establishmentId);
+      setRoomTypes(res.data.data || res.data || []);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
   useEffect(() => {
     if (selectedEstablishment) {
       fetchRooms(selectedEstablishment.id);
+      fetchRoomTypes(selectedEstablishment.id);
     } else {
       setRooms([]);
+      setRoomTypes([]);
     }
   }, [selectedEstablishment]);
 
@@ -332,6 +342,29 @@ export default function EstRooms() {
       toast.error(msg);
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Create New Accommodation Type
+  const handleCreateType = async () => {
+    if (!newTypeName.trim()) {
+      toast.error('Informe o nome do tipo de acomodação');
+      return;
+    }
+    try {
+      setSavingType(true);
+      await accommodationTypesApi.create({ nome: newTypeName.trim() });
+      toast.success('Tipo de acomodação cadastrado com sucesso');
+      setTypeDialogOpen(false);
+      setNewTypeName('');
+      if (selectedEstablishment) {
+        fetchRoomTypes(selectedEstablishment.id);
+      }
+    } catch (error: any) {
+      const msg = error.response?.data?.message || 'Erro ao cadastrar tipo';
+      toast.error(msg);
+    } finally {
+      setSavingType(false);
     }
   };
 
@@ -748,7 +781,8 @@ export default function EstRooms() {
                 sx={{
                   borderRadius: '16px',
                   border: '1px solid',
-                  borderColor: 'divider',
+                  borderColor: room.ativo ? 'divider' : 'warning.light',
+                  opacity: room.ativo ? 1 : 0.65,
                   boxShadow: '0 4px 20px 0 rgba(0,0,0,0.015)',
                   transition: 'transform 0.2s ease, box-shadow 0.2s ease',
                   '&:hover': {
@@ -911,22 +945,34 @@ export default function EstRooms() {
 
           <Grid container spacing={2}>
             <Grid size={{ xs: 12, sm: 6 }}>
-              <FormControl fullWidth required>
-                <InputLabel id="room-type-label">Tipo de Acomodação</InputLabel>
-                <Select
-                  labelId="room-type-label"
-                  value={tipoAcomodacaoId}
-                  label="Tipo de Acomodação"
-                  disabled={saving}
-                  onChange={(e) => setTipoAcomodacaoId(e.target.value)}
-                >
-                  {roomTypes.map((type) => (
-                    <MenuItem key={type.id} value={type.id}>
-                      {type.nome}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+              <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+                <FormControl fullWidth required>
+                  <InputLabel id="room-type-label">Tipo de Acomodação</InputLabel>
+                  <Select
+                    labelId="room-type-label"
+                    value={tipoAcomodacaoId}
+                    label="Tipo de Acomodação"
+                    disabled={saving}
+                    onChange={(e) => setTipoAcomodacaoId(e.target.value)}
+                  >
+                    {roomTypes.map((type) => (
+                      <MenuItem key={type.id} value={type.id}>
+                        {type.nome}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <Tooltip title="Cadastrar novo tipo">
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => setTypeDialogOpen(true)}
+                    sx={{ minWidth: 40, height: 56, borderRadius: '8px' }}
+                  >
+                    +
+                  </Button>
+                </Tooltip>
+              </Box>
             </Grid>
 
             <Grid size={{ xs: 12, sm: 6 }}>
@@ -1374,6 +1420,42 @@ export default function EstRooms() {
         <DialogActions sx={{ p: 2.5, borderTop: '1px solid', borderColor: 'divider' }}>
           <Button onClick={() => setPricesDialogOpen(false)} variant="contained" sx={{ textTransform: 'none', fontWeight: 600, borderRadius: '8px' }}>
             Fechar
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* New Accommodation Type Dialog */}
+      <Dialog open={typeDialogOpen} onClose={() => setTypeDialogOpen(false)} maxWidth="xs" fullWidth sx={{ '& .MuiDialog-paper': { borderRadius: '16px' } }}>
+        <DialogTitle sx={{ fontFamily: '"Outfit", sans-serif', fontWeight: 700 }}>
+          Cadastrar Tipo de Acomodação
+        </DialogTitle>
+        <DialogContent sx={{ pt: 1 }}>
+          <TextField
+            label="Nome do Tipo"
+            fullWidth
+            required
+            value={newTypeName}
+            onChange={(e) => setNewTypeName(e.target.value)}
+            placeholder="Ex: Chalé Rústico, Quarto Duplo"
+            sx={{ mt: 1 }}
+          />
+        </DialogContent>
+        <DialogActions sx={{ p: 2.5 }}>
+          <Button onClick={() => setTypeDialogOpen(false)} disabled={savingType} sx={{ textTransform: 'none', fontWeight: 600 }}>
+            Cancelar
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleCreateType}
+            disabled={savingType || !newTypeName.trim()}
+            sx={{
+              borderRadius: '8px',
+              textTransform: 'none',
+              fontWeight: 600,
+              background: 'linear-gradient(135deg, #0097A7, #00BCD4)',
+            }}
+          >
+            {savingType ? <CircularProgress size={24} color="inherit" /> : 'Salvar'}
           </Button>
         </DialogActions>
       </Dialog>

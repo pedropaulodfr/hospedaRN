@@ -110,7 +110,12 @@ export class UsersService {
     const senhaHash = await bcrypt.hash(randomPassword, 10);
 
     const estabelecimentoVinculadoId =
-      creator.perfil === 'ESTABELECIMENTO' ? creator.id : dto.estabelecimentoVinculadoId; // Adjust logic if needed based on structure
+      creator.perfil === 'ESTABELECIMENTO'
+        ? (await this.prisma.estabelecimento.findFirst({
+            where: { proprietarioId: creator.id },
+            select: { id: true },
+          }))?.id
+        : dto.estabelecimentoVinculadoId;
 
     const newSubUser = await this.prisma.usuario.create({
       data: {

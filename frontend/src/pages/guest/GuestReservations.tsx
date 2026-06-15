@@ -27,6 +27,8 @@ import {
   useTheme,
   useMediaQuery,
   LinearProgress,
+  ImageList,
+  ImageListItem,
 } from '@mui/material';
 import {
   CalendarMonth,
@@ -45,6 +47,7 @@ import {
   WarningAmber,
   Payment,
   ReceiptLong,
+  Image,
 } from '@mui/icons-material';
 import { reservationsApi, paymentsApi } from '../../services/api';
 import toast from 'react-hot-toast';
@@ -64,6 +67,7 @@ interface Quarto {
   id: string;
   nome: string;
   capacidade: number;
+  fotos?: Foto[];
 }
 
 interface Cidade {
@@ -817,6 +821,21 @@ export default function GuestReservations() {
                     <Typography variant="body2" color="text.secondary">
                       Capacidade Máxima: {selectedReservation.quarto.capacidade} pessoas
                     </Typography>
+                    {selectedReservation.quarto.fotos && selectedReservation.quarto.fotos.length > 0 && (
+                      <Box sx={{ mt: 1.5 }}>
+                        <ImageList cols={3} gap={4} sx={{ m: 0 }}>
+                          {selectedReservation.quarto.fotos.map((foto) => (
+                            <ImageListItem key={foto.id}>
+                              <img
+                                src={foto.url}
+                                alt={selectedReservation.quarto.nome}
+                                style={{ height: 72, width: '100%', objectFit: 'cover', borderRadius: 6 }}
+                              />
+                            </ImageListItem>
+                          ))}
+                        </ImageList>
+                      </Box>
+                    )}
                   </Box>
 
                   <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between' }}>

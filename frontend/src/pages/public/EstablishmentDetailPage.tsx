@@ -6,13 +6,14 @@ import {
   Card, CardContent, CardMedia, Rating, Chip,
   Skeleton, IconButton, Paper, Divider, useTheme, useMediaQuery,
   Select, MenuItem, FormControl, InputLabel, Dialog, DialogTitle,
-  DialogContent, Alert
+  DialogContent, Alert,
+  ImageList, ImageListItem,
 } from '@mui/material';
 import {
   Wifi, Pool, LocalParking, FreeBreakfast, Tv, AcUnit, Kitchen, Pets,
   FitnessCenter, LocalBar, Restaurant, RoomService, Star, LocationOn,
   Phone, Language, ArrowBack, CalendarToday, People, AccountBalanceWallet,
-  ContentCopy, CheckCircle, CreditCard, Receipt, Email
+  ContentCopy, CheckCircle, CreditCard, Receipt, Email, Close
 } from '@mui/icons-material';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
@@ -76,6 +77,11 @@ export default function EstablishmentDetailPage() {
 
   // Interactive gallery state
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
+
+  // Room photo gallery state
+  const [roomGalleryOpen, setRoomGalleryOpen] = useState(false);
+  const [roomGalleryPhotos, setRoomGalleryPhotos] = useState<any[]>([]);
+  const [roomGalleryIndex, setRoomGalleryIndex] = useState(0);
 
   // Success Dialog states
   const [successDialogOpen, setSuccessDialogOpen] = useState(false);
@@ -255,6 +261,12 @@ export default function EstablishmentDetailPage() {
     }
   };
 
+  const handleOpenRoomGallery = (photos: any[], index: number) => {
+    setRoomGalleryPhotos(photos);
+    setRoomGalleryIndex(index);
+    setRoomGalleryOpen(true);
+  };
+
   const handleCopyText = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
     toast.success(`${label} copiado!`);
@@ -415,28 +427,121 @@ export default function EstablishmentDetailPage() {
                 </Typography>
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                   {establishment.quartos.map((room: any) => {
-                    const roomCover = room.fotos?.find((p: any) => p.isCapa)?.url
-                      || room.fotos?.[0]?.url
-                      || 'https://placehold.co/150x100/0097A7/FFFFFF?text=Quarto';
+                    const roomPhotos = room.fotos?.length > 0
+                      ? [...room.fotos].sort((a: any, b: any) => a.ordem - b.ordem)
+                      : null;
                     return (
                       <Card
                         key={room.id}
                         sx={{
-                          display: 'flex',
-                          flexDirection: { xs: 'column', sm: 'row' },
                           borderRadius: 3,
                           overflow: 'hidden',
                           border: '1px solid rgba(0,0,0,0.06)',
                           boxShadow: 'none',
                         }}
                       >
-                        <CardMedia
-                          component="img"
-                          image={roomCover}
-                          alt={room.nome}
-                          sx={{ width: { xs: '100%', sm: 180 }, height: 130, objectFit: 'cover' }}
-                        />
-                        <CardContent sx={{ flex: 1, p: 3, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                        {roomPhotos ? (
+                          <Box
+                            sx={{
+                              display: 'grid',
+                              gridTemplateColumns: roomPhotos.length >= 2 ? '1fr 1fr' : '1fr',
+                              gridTemplateRows: roomPhotos.length >= 3 ? '200px 100px' : '200px',
+                              gap: '2px',
+                              bgcolor: '#000',
+                            }}
+                          >
+                            {roomPhotos.slice(0, 4).map((photo: any, idx: number) => (
+                              <Box
+                                key={photo.id}
+                                onClick={() => handleOpenRoomGallery(roomPhotos, idx)}
+                                sx={{
+                                  position: 'relative',
+                                  overflow: 'hidden',
+                                  cursor: 'pointer',
+                                  height: idx === 0 && roomPhotos.length >= 3 ? '100%' : undefined,
+                                  gridRow: idx === 0 && roomPhotos.length >= 3 ? '1 / 3' : undefined,
+                                  '&:hover .overlay': { opacity: 1 },
+                                }}
+                              >
+                                <Box
+                                  component="img"
+                                  src={photo.url}
+                                  alt={room.nome}
+                                  sx={{
+                                    width: '100%',
+                                    height: '100%',
+                                    objectFit: 'cover',
+                                    display: 'block',
+                                  }}
+                                />
+                                <Box
+                                  className="overlay"
+                                  sx={{
+                                    position: 'absolute',
+                                    inset: 0,
+                                    bgcolor: 'rgba(0,0,0,0.3)',
+                                    opacity: 0,
+                                    transition: 'opacity 0.2s',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                  }}
+                                >
+                                </Box>
+                              </Box>
+                            ))}
+                            {roomPhotos.length > 4 && (
+                              <Box
+                                onClick={() => handleOpenRoomGallery(roomPhotos, 4)}
+                                sx={{
+                                  position: 'relative',
+                                  overflow: 'hidden',
+                                  cursor: 'pointer',
+                                  height: 100,
+                                  '&:hover .overlay': { opacity: 1 },
+                                }}
+                              >
+                                <Box
+                                  component="img"
+                                  src={roomPhotos[4].url}
+                                  alt={room.nome}
+                                  sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                                />
+                                <Box
+                                  className="overlay"
+                                  sx={{
+                                    position: 'absolute',
+                                    inset: 0,
+                                    bgcolor: 'rgba(0,0,0,0.5)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                  }}
+                                >
+                                  <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700 }}>
+                                    +{roomPhotos.length - 4}
+                                  </Typography>
+                                </Box>
+                              </Box>
+                            )}
+                          </Box>
+                        ) : (
+                          <Box
+                            sx={{
+                              width: '100%',
+                              height: 130,
+                              bgcolor: 'rgba(0,151,167,0.06)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                          >
+                            <Typography variant="body2" color="text.secondary">
+                              Sem foto
+                            </Typography>
+                          </Box>
+                        )}
+                        <CardContent sx={{ p: 3 }}>
                           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 1 }}>
                             <Box>
                               <Typography variant="h6" sx={{ fontWeight: 700 }}>
@@ -773,6 +878,72 @@ export default function EstablishmentDetailPage() {
           </Grid>
         </Grid>
       </Container>
+
+      {/* ================= ROOM PHOTO LIGHTBOX ================= */}
+      <Dialog
+        open={roomGalleryOpen}
+        onClose={() => setRoomGalleryOpen(false)}
+        maxWidth="lg"
+        fullWidth
+        slotProps={{
+          paper: {
+            sx: { borderRadius: 4, bgcolor: '#000', overflow: 'hidden' },
+          },
+        }}
+      >
+        <Box sx={{ position: 'relative', minHeight: 400, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <IconButton
+            onClick={() => setRoomGalleryOpen(false)}
+            sx={{ position: 'absolute', top: 8, right: 8, color: '#fff', zIndex: 10, bgcolor: 'rgba(0,0,0,0.5)', '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' } }}
+          >
+            <Close />
+          </IconButton>
+
+          {roomGalleryPhotos.length > 1 && (
+            <IconButton
+              onClick={() => setRoomGalleryIndex((prev) => (prev === 0 ? roomGalleryPhotos.length - 1 : prev - 1))}
+              sx={{ position: 'absolute', left: 8, color: '#fff', zIndex: 10, bgcolor: 'rgba(0,0,0,0.5)', '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' } }}
+            >
+              <ArrowBack />
+            </IconButton>
+          )}
+
+          <Box
+            component="img"
+            src={roomGalleryPhotos[roomGalleryIndex]?.url}
+            alt="Foto do quarto"
+            sx={{ maxWidth: '100%', maxHeight: '85vh', objectFit: 'contain' }}
+          />
+
+          {roomGalleryPhotos.length > 1 && (
+            <IconButton
+              onClick={() => setRoomGalleryIndex((prev) => (prev === roomGalleryPhotos.length - 1 ? 0 : prev + 1))}
+              sx={{ position: 'absolute', right: 8, color: '#fff', zIndex: 10, bgcolor: 'rgba(0,0,0,0.5)', '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' } }}
+            >
+              <ArrowBack sx={{ transform: 'rotate(180deg)' }} />
+            </IconButton>
+          )}
+
+          {roomGalleryPhotos.length > 1 && (
+            <Box sx={{ position: 'absolute', bottom: 16, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 1 }}>
+              {roomGalleryPhotos.map((_: any, idx: number) => (
+                <Box
+                  key={idx}
+                  onClick={() => setRoomGalleryIndex(idx)}
+                  sx={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: '50%',
+                    bgcolor: idx === roomGalleryIndex ? '#fff' : 'rgba(255,255,255,0.4)',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                  }}
+                />
+              ))}
+            </Box>
+          )}
+        </Box>
+      </Dialog>
 
       {/* ================= SUCCESS CHECKOUT DIALOG ================= */}
       <Dialog

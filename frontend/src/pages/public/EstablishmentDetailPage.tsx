@@ -106,7 +106,7 @@ export default function EstablishmentDetailPage() {
   // Query regras
   const { data: regras } = useQuery({
     queryKey: ['establishmentRegras', id],
-    queryFn: () => regrasApi.getByEstablishment(id!).then(res => res.data),
+    queryFn: () => regrasApi.getByEstablishment(id!).then(res => res.data.data || res.data || []),
     enabled: !!id,
   });
 

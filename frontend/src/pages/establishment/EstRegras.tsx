@@ -69,9 +69,10 @@ export default function EstRegras() {
   const load = async () => {
     if (!estabelecimentoId) return;
     try {
-      const { data } = await regrasApi.getByEstablishment(estabelecimentoId);
-      setSecoes(data);
-      setExpanded(Object.fromEntries(data.map((s: Secao) => [s.id, true])));
+      const res = await regrasApi.getByEstablishment(estabelecimentoId);
+      const items = res.data.data || res.data || [];
+      setSecoes(items);
+      setExpanded(Object.fromEntries(items.map((s: Secao) => [s.id, true])));
     } catch {
       toast.error('Erro ao carregar regras');
     } finally {

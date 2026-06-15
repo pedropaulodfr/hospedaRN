@@ -437,14 +437,20 @@ export default function EstablishmentDetailPage() {
                     const roomPhotos = room.fotos?.length > 0
                       ? [...room.fotos].sort((a: any, b: any) => a.ordem - b.ordem)
                       : null;
+                    const isSelected = selectedRoomId === room.id;
                     return (
                       <Card
                         key={room.id}
+                        onClick={() => setSelectedRoomId(room.id)}
                         sx={{
                           borderRadius: 3,
                           overflow: 'hidden',
-                          border: '1px solid rgba(0,0,0,0.06)',
-                          boxShadow: 'none',
+                          border: isSelected ? '2px solid' : '1px solid rgba(0,0,0,0.06)',
+                          borderColor: isSelected ? 'primary.main' : 'rgba(0,0,0,0.06)',
+                          boxShadow: isSelected ? '0 0 0 3px rgba(0,151,167,0.12)' : 'none',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s ease',
+                          '&:hover': { borderColor: 'primary.light', boxShadow: '0 0 0 3px rgba(0,151,167,0.08)' },
                         }}
                       >
                         {roomPhotos ? (

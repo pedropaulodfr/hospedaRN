@@ -71,8 +71,8 @@ export default function EstablishmentDetailPage() {
   const [checkIn, setCheckIn] = useState('');
   const [checkOut, setCheckOut] = useState('');
   const [selectedRoomId, setSelectedRoomId] = useState('');
-  const [adults, setAdults] = useState(1);
-  const [children, setChildren] = useState(0);
+  const [adults, setAdults] = useState<string | number>(1);
+  const [children, setChildren] = useState<string | number>(0);
   const [paymentMethod, setPaymentMethod] = useState<'PIX' | 'CARTAO' | 'BOLETO'>('PIX');
 
   // Interactive gallery state
@@ -213,7 +213,7 @@ export default function EstablishmentDetailPage() {
       toast.error('Este quarto não está disponível para o período selecionado.');
       return;
     }
-    if (selectedRoom && (adults + children) > selectedRoom.capacidade) {
+    if (selectedRoom && (Number(adults) + Number(children)) > selectedRoom.capacidade) {
       toast.error(`A capacidade máxima deste quarto é de ${selectedRoom.capacidade} pessoas.`);
       return;
     }
@@ -237,8 +237,8 @@ export default function EstablishmentDetailPage() {
         quartoId: selectedRoomId,
         checkIn,
         checkOut,
-        adultos: adults,
-        criancas: children,
+        adultos: Number(adults) || 1,
+        criancas: Number(children) || 0,
         observacoes: 'Reserva efetuada pelo painel de detalhes.',
       });
 
@@ -739,7 +739,8 @@ export default function EstablishmentDetailPage() {
                           label="Adultos"
                           type="number"
                           value={adults}
-                          onChange={(e) => setAdults(Math.max(1, parseInt(e.target.value) || 1))}
+                          onChange={(e) => setAdults(e.target.value)}
+                          onBlur={() => setAdults(Math.max(1, Number(adults) || 1))}
                           slotProps={{
                             htmlInput: {
                               min: 1,
@@ -753,7 +754,8 @@ export default function EstablishmentDetailPage() {
                           label="Crianças"
                           type="number"
                           value={children}
-                          onChange={(e) => setChildren(Math.max(0, parseInt(e.target.value) || 0))}
+                          onChange={(e) => setChildren(e.target.value)}
+                          onBlur={() => setChildren(Math.max(0, Number(children) || 0))}
                           slotProps={{
                             htmlInput: {
                               min: 0,

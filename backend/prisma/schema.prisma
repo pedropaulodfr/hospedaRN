@@ -192,7 +192,7 @@ model Quarto {
 
   // Relations
   estabelecimento   Estabelecimento   @relation(fields: [estabelecimentoId], references: [id], onDelete: Cascade)
-  tipoAcomodacao    TipoAcomodacao?   @relation(fields: [tipoAcomodacaoId], references: [id])
+  tipoAcomodacao    TipoAcomodacao?   @relation(fields: [tipoAcomodacaoId], references: [id], onDelete: SetNull)
   precos            PrecoQuarto[]
   reservas          Reserva[]
   bloqueiosData     BloqueioData[]

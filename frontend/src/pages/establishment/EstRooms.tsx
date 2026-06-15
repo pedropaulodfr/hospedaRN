@@ -38,6 +38,7 @@ import {
   ImageList,
   ImageListItem,
   ImageListItemBar,
+  Divider,
 } from '@mui/material';
 import {
   Add,
@@ -175,6 +176,11 @@ export default function EstRooms() {
   const [typeDialogOpen, setTypeDialogOpen] = useState(false);
   const [newTypeName, setNewTypeName] = useState('');
   const [savingType, setSavingType] = useState(false);
+
+  // Delete Accommodation Type
+  const [typeToDelete, setTypeToDelete] = useState<RoomType | null>(null);
+  const [deleteTypeDialogOpen, setDeleteTypeDialogOpen] = useState(false);
+  const [deletingType, setDeletingType] = useState(false);
 
   // Load Initial Data: User's establishments and room types
   useEffect(() => {
@@ -365,6 +371,33 @@ export default function EstRooms() {
       toast.error(msg);
     } finally {
       setSavingType(false);
+    }
+  };
+
+  // Delete Accommodation Type
+  const handleDeleteTypeConfirm = async () => {
+    if (!typeToDelete) return;
+    try {
+      setDeletingType(true);
+      const res = await accommodationTypesApi.delete(typeToDelete.id);
+      const data = res.data?.data || res.data;
+      const desvinculados = data?.quartosDesvinculados ?? 0;
+      if (desvinculados > 0) {
+        toast.success(`"${typeToDelete.nome}" excluído. ${desvinculados} quarto(s) desvinculado(s).`);
+      } else {
+        toast.success(`"${typeToDelete.nome}" excluído com sucesso`);
+      }
+      setDeleteTypeDialogOpen(false);
+      setTypeToDelete(null);
+      if (selectedEstablishment) {
+        fetchRoomTypes(selectedEstablishment.id);
+        fetchRooms(selectedEstablishment.id);
+      }
+    } catch (error: any) {
+      const msg = error.response?.data?.message || 'Erro ao excluir tipo';
+      toast.error(msg);
+    } finally {
+      setDeletingType(false);
     }
   };
 
@@ -962,14 +995,14 @@ export default function EstRooms() {
                     ))}
                   </Select>
                 </FormControl>
-                <Tooltip title="Cadastrar novo tipo">
+                <Tooltip title="Gerenciar tipos de acomodação">
                   <Button
                     variant="outlined"
                     size="small"
                     onClick={() => setTypeDialogOpen(true)}
-                    sx={{ minWidth: 40, height: 56, borderRadius: '8px' }}
+                    sx={{ minWidth: 90, height: 56, borderRadius: '8px', textTransform: 'none', fontWeight: 600, fontSize: '0.75rem' }}
                   >
-                    +
+                    Gerenciar
                   </Button>
                 </Tooltip>
               </Box>
@@ -1424,38 +1457,85 @@ export default function EstRooms() {
         </DialogActions>
       </Dialog>
 
-      {/* New Accommodation Type Dialog */}
+      {/* Accommodation Type Management Dialog */}
       <Dialog open={typeDialogOpen} onClose={() => setTypeDialogOpen(false)} maxWidth="xs" fullWidth sx={{ '& .MuiDialog-paper': { borderRadius: '16px' } }}>
         <DialogTitle sx={{ fontFamily: '"Outfit", sans-serif', fontWeight: 700 }}>
-          Cadastrar Tipo de Acomodação
+          Gerenciar Tipos de Acomodação
         </DialogTitle>
         <DialogContent sx={{ pt: 1 }}>
-          <TextField
-            label="Nome do Tipo"
-            fullWidth
-            required
-            value={newTypeName}
-            onChange={(e) => setNewTypeName(e.target.value)}
-            placeholder="Ex: Chalé Rústico, Quarto Duplo"
-            sx={{ mt: 1 }}
-          />
+          <Box sx={{ display: 'flex', gap: 1, mb: 3 }}>
+            <TextField
+              label="Novo Tipo"
+              fullWidth
+              size="small"
+              value={newTypeName}
+              onChange={(e) => setNewTypeName(e.target.value)}
+              placeholder="Ex: Chalé Rústico"
+            />
+            <Button
+              variant="contained"
+              onClick={handleCreateType}
+              disabled={savingType || !newTypeName.trim()}
+              sx={{ borderRadius: '8px', textTransform: 'none', fontWeight: 600, minWidth: 80, background: 'linear-gradient(135deg, #0097A7, #00BCD4)' }}
+            >
+              {savingType ? <CircularProgress size={20} color="inherit" /> : 'Adicionar'}
+            </Button>
+          </Box>
+
+          <Divider sx={{ mb: 2 }} />
+
+          <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
+            Tipos cadastrados
+          </Typography>
+
+          {roomTypes.length === 0 ? (
+            <Typography variant="body2" color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
+              Nenhum tipo cadastrado ainda.
+            </Typography>
+          ) : (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+              {roomTypes.map((type) => (
+                <Paper key={type.id} variant="outlined" sx={{ p: 1.5, borderRadius: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>{type.nome}</Typography>
+                  <Tooltip title="Excluir tipo">
+                    <IconButton
+                      size="small"
+                      color="error"
+                      onClick={() => { setTypeToDelete(type); setDeleteTypeDialogOpen(true); }}
+                    >
+                      <Delete fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </Paper>
+              ))}
+            </Box>
+          )}
         </DialogContent>
         <DialogActions sx={{ p: 2.5 }}>
-          <Button onClick={() => setTypeDialogOpen(false)} disabled={savingType} sx={{ textTransform: 'none', fontWeight: 600 }}>
+          <Button onClick={() => setTypeDialogOpen(false)} sx={{ textTransform: 'none', fontWeight: 600 }}>
+            Fechar
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Type Confirmation Dialog */}
+      <Dialog open={deleteTypeDialogOpen} onClose={() => setDeleteTypeDialogOpen(false)} maxWidth="xs" fullWidth sx={{ '& .MuiDialog-paper': { borderRadius: '16px' } }}>
+        <DialogTitle sx={{ fontFamily: '"Outfit", sans-serif', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <WarningAmber sx={{ color: 'error.main' }} />
+          Excluir Tipo
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Deseja realmente excluir <strong>{typeToDelete?.nome}</strong>?
+            Os quartos vinculados a este tipo terão o campo "Tipo de Acomodação" removido (ficarão sem tipo definido).
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions sx={{ p: 2.5, gap: 1 }}>
+          <Button onClick={() => setDeleteTypeDialogOpen(false)} disabled={deletingType} sx={{ textTransform: 'none', fontWeight: 600 }}>
             Cancelar
           </Button>
-          <Button
-            variant="contained"
-            onClick={handleCreateType}
-            disabled={savingType || !newTypeName.trim()}
-            sx={{
-              borderRadius: '8px',
-              textTransform: 'none',
-              fontWeight: 600,
-              background: 'linear-gradient(135deg, #0097A7, #00BCD4)',
-            }}
-          >
-            {savingType ? <CircularProgress size={24} color="inherit" /> : 'Salvar'}
+          <Button variant="contained" color="error" onClick={handleDeleteTypeConfirm} disabled={deletingType} sx={{ borderRadius: '8px', textTransform: 'none', fontWeight: 600 }}>
+            {deletingType ? 'Excluindo...' : 'Sim, Excluir'}
           </Button>
         </DialogActions>
       </Dialog>

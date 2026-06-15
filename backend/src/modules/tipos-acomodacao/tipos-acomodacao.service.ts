@@ -47,9 +47,29 @@ export class TiposAcomodacaoService {
     await this.findOne(id);
     return this.prisma.tipoAcomodacao.update({ where: { id }, data: dto });
   }
-  async remove(id: string) {
-    await this.findOne(id);
+  async remove(id: string, userId?: string) {
+    const tipo = await this.findOne(id);
+
+    if (userId) {
+      const user = await this.prisma.usuario.findUnique({ where: { id: userId } });
+      if (!user) throw new NotFoundException('Usuário não encontrado');
+
+      if (user.perfil === 'ESTABELECIMENTO') {
+        const est = await this.prisma.estabelecimento.findFirst({
+          where: { proprietarioId: userId },
+          select: { id: true },
+        });
+        if (!est || tipo.estabelecimentoId !== est.id) {
+          throw new ForbiddenException('Sem permissão para excluir este tipo');
+        }
+      }
+    }
+
+    const quartosVinculados = await this.prisma.quarto.count({ where: { tipoAcomodacaoId: id } });
     await this.prisma.tipoAcomodacao.delete({ where: { id } });
-    return { message: 'Tipo removido' };
+    return {
+      message: 'Tipo de acomodação removido com sucesso',
+      quartosDesvinculados: quartosVinculados,
+    };
   }
 }

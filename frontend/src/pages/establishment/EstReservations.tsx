@@ -105,7 +105,7 @@ interface Reservation {
 
 const statusMap = {
   SOLICITADA: { label: 'Solicitada', color: 'info' as const, bg: 'rgba(2, 136, 209, 0.08)', text: '#0288d1' },
-  CONFIRMADA: { label: 'Confirmada / Agrade Pagto', color: 'warning' as const, bg: 'rgba(237, 108, 2, 0.08)', text: '#ed6c02' },
+  CONFIRMADA: { label: 'Confirmada / Ag. Pagto', color: 'warning' as const, bg: 'rgba(237, 108, 2, 0.08)', text: '#ed6c02' },
   AGUARDANDO_PAGAMENTO: { label: 'Aguardando Pagamento', color: 'warning' as const, bg: 'rgba(237, 108, 2, 0.08)', text: '#ed6c02' },
   FINALIZADA: { label: 'Finalizada', color: 'success' as const, bg: 'rgba(46, 125, 50, 0.08)', text: '#2e7d32' },
   CANCELADA: { label: 'Cancelada', color: 'error' as const, bg: 'rgba(211, 47, 47, 0.08)', text: '#d32f2f' },

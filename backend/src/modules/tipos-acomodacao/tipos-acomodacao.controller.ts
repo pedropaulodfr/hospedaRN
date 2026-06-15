@@ -17,5 +17,6 @@ export class TiposAcomodacaoController {
     return this.service.create(dto, userId);
   }
   @Patch(':id') @Roles(PerfilUsuario.ADMIN) @ApiBearerAuth('JWT-auth') update(@Param('id') id: string, @Body() dto: Partial<CreateTipoAcomodacaoDto>) { return this.service.update(id, dto); }
-  @Delete(':id') @Roles(PerfilUsuario.ADMIN) @ApiBearerAuth('JWT-auth') @HttpCode(HttpStatus.OK) remove(@Param('id') id: string) { return this.service.remove(id); }
+  @Delete(':id') @Roles(PerfilUsuario.ADMIN, PerfilUsuario.ESTABELECIMENTO) @ApiBearerAuth('JWT-auth') @HttpCode(HttpStatus.OK)
+  remove(@Param('id') id: string, @CurrentUser('sub') userId: string) { return this.service.remove(id, userId); }
 }

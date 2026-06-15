@@ -39,6 +39,7 @@ import AdminReports from './pages/admin/AdminReports';
 import AdminProfile from './pages/admin/AdminProfile';
 import AdminUsers from './pages/admin/AdminUsers';
 import EstUsers from './pages/establishment/EstUsers';
+import EstRegras from './pages/establishment/EstRegras';
 
 // Protected Route component
 const ProtectedRoute = ({
@@ -117,6 +118,7 @@ export default function App() {
           <Route path="relatorios" element={<ProtectedRoute permission="EST_REPORTS"><EstReports /></ProtectedRoute>} />
           <Route path="perfil" element={<EstProfile />} />
           <Route path="usuarios" element={<ProtectedRoute permission="EST_USERS"><EstUsers /></ProtectedRoute>} />
+          <Route path="regras" element={<EstRegras />} />
         </Route>
 
         {/* Admin Routes */}

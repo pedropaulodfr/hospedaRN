@@ -247,3 +247,13 @@ export const fotosApi = {
   update: (id: string, data: any) => api.patch(`/fotos/${id}`, data),
   delete: (id: string) => api.delete(`/fotos/${id}`),
 };
+
+export const regrasApi = {
+  getByEstablishment: (id: string) => api.get(`/regras/estabelecimento/${id}`),
+  createSecao: (estabelecimentoId: string, data: any) => api.post(`/regras/secao/${estabelecimentoId}`, data),
+  updateSecao: (id: string, data: any) => api.patch(`/regras/secao/${id}`, data),
+  deleteSecao: (id: string) => api.delete(`/regras/secao/${id}`),
+  createTopico: (secaoId: string, data: any) => api.post(`/regras/topico/${secaoId}`, data),
+  updateTopico: (id: string, data: any) => api.patch(`/regras/topico/${id}`, data),
+  deleteTopico: (id: string) => api.delete(`/regras/topico/${id}`),
+};

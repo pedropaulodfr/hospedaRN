@@ -23,6 +23,7 @@ import { FotosModule } from './modules/fotos/fotos.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { MapsModule } from './modules/maps/maps.module';
+import { RegrasModule } from './modules/regras/regras.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
@@ -58,6 +59,7 @@ import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
     AuditModule,
     MapsModule,
     FotosModule,
+    RegrasModule,
   ],
   providers: [
     {

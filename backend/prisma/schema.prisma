@@ -136,6 +136,7 @@ model Estabelecimento {
   fotos           Foto[]                    @relation("EstabelecimentoFotos")
   subUsuarios     Usuario[]                 @relation("EstabelecimentoSubUsuarios")
   tiposAcomodacao TipoAcomodacao[]
+  regras          RegraSecao[]
 
   @@map("Estabelecimento")
 }
@@ -394,4 +395,32 @@ model Hospede {
   usuario           Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
 
   @@map("Hospede")
+}
+
+model RegraSecao {
+  id                String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  nome              String         @db.VarChar(100)
+  estabelecimentoId String         @map("estabelecimento_id") @db.Uuid
+  ordem             Int            @default(0)
+  criadoEm          DateTime       @default(now()) @map("criado_em") @db.Timestamptz()
+  atualizadoEm      DateTime       @updatedAt @map("atualizado_em") @db.Timestamptz()
+
+  estabelecimento   Estabelecimento @relation(fields: [estabelecimentoId], references: [id], onDelete: Cascade)
+  topicos           RegraTopico[]
+
+  @@map("RegraSecao")
+}
+
+model RegraTopico {
+  id        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  secaoId   String   @map("secao_id") @db.Uuid
+  label     String   @db.VarChar(200)
+  valor     String?  @db.VarChar(500)
+  ordem     Int      @default(0)
+  criadoEm  DateTime @default(now()) @map("criado_em") @db.Timestamptz()
+  atualizadoEm DateTime @updatedAt @map("atualizado_em") @db.Timestamptz()
+
+  secao     RegraSecao @relation(fields: [secaoId], references: [id], onDelete: Cascade)
+
+  @@map("RegraTopico")
 }

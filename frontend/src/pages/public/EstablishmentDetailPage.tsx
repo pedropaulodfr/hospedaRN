@@ -18,7 +18,7 @@ import {
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import toast from 'react-hot-toast';
-import { establishmentsApi, roomsApi, reservationsApi, paymentsApi } from '../../services/api';
+import { establishmentsApi, roomsApi, reservationsApi, paymentsApi, regrasApi } from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
 
 // Fix Leaflet marker icon asset paths in Vite
@@ -100,6 +100,13 @@ export default function EstablishmentDetailPage() {
   const { data: establishment, isLoading, error } = useQuery({
     queryKey: ['establishmentDetail', id],
     queryFn: () => establishmentsApi.getOne(id!).then(res => res.data.data),
+    enabled: !!id,
+  });
+
+  // Query regras
+  const { data: regras } = useQuery({
+    queryKey: ['establishmentRegras', id],
+    queryFn: () => regrasApi.getByEstablishment(id!).then(res => res.data),
     enabled: !!id,
   });
 
@@ -579,39 +586,24 @@ export default function EstablishmentDetailPage() {
 
             {/* Rules and Timings */}
             <Paper elevation={0} sx={{ p: 4, borderRadius: 4, border: '1px solid rgba(0,0,0,0.05)', mb: 4 }}>
-              <Typography variant="h5" sx={{ fontWeight: 700, fontFamily: '"Outfit", sans-serif', mb: 2 }}>
+              <Typography variant="h5" sx={{ fontWeight: 700, fontFamily: '"Outfit", sans-serif', mb: 3 }}>
                 Regras e Informações Gerais
               </Typography>
               <Grid container spacing={3}>
-                <Grid size={{ xs: 12, sm: 6 }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
-                    Horários
-                  </Typography>
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                    <Typography variant="body2" color="text.secondary">
-                      <strong>Check-in:</strong> a partir das 14:00h até as 22:00h
+                {regras?.map((secao: any) => (
+                  <Grid key={secao.id} size={{ xs: 12, sm: 6 }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+                      {secao.nome}
                     </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      <strong>Check-out:</strong> até as 12:00h
-                    </Typography>
-                  </Box>
-                </Grid>
-                <Grid size={{ xs: 12, sm: 6 }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
-                    Políticas
-                  </Typography>
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                    <Typography variant="body2" color="text.secondary">
-                      • Não é permitido fumar dentro das acomodações.
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      • Horário de silêncio obrigatório das 22h às 08h.
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      • Animais de estimação aceitos sob consulta prévia.
-                    </Typography>
-                  </Box>
-                </Grid>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                      {secao.topicos?.map((topico: any) => (
+                        <Typography key={topico.id} variant="body2" color="text.secondary">
+                          {topico.valor ? <><strong>{topico.label}:</strong> {topico.valor}</> : `• ${topico.label}`}
+                        </Typography>
+                      ))}
+                    </Box>
+                  </Grid>
+                ))}
               </Grid>
             </Paper>
 

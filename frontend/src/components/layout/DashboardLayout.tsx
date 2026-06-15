@@ -6,7 +6,7 @@ import {
 } from '@mui/material';
 import {
   Dashboard, Hotel, CalendarMonth, Photo, AttachMoney, Assessment,
-  Favorite, Person, Map, EmojiEvents, LocationCity, Settings,
+  Favorite, Person, Map, EmojiEvents, LocationCity, Settings, Description,
   Logout, ChevronLeft, BeachAccess, Notifications, Menu as MenuIcon,
 } from '@mui/icons-material';
 import { useState } from 'react';
@@ -32,6 +32,7 @@ const menuConfig: Record<'guest' | 'establishment' | 'admin', MenuItemConfig[]> 
     { label: 'Preços', path: '/estabelecimento/precos', icon: <AttachMoney />, permission: 'EST_PRICES' },
     { label: 'Relatórios', path: '/estabelecimento/relatorios', icon: <Assessment />, permission: 'EST_REPORTS' },
     { label: 'Equipe', path: '/estabelecimento/usuarios', icon: <Person />, permission: 'EST_USERS' },
+    { label: 'Regras', path: '/estabelecimento/regras', icon: <Description /> },
     { label: 'Meu Perfil', path: '/estabelecimento/perfil', icon: <Settings /> },
   ],
   admin: [

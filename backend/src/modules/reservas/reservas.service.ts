@@ -4,6 +4,7 @@ import {
 import { PrismaService } from '../../database/prisma.service';
 import { CreateReservationDto, CancelReservationDto } from './dto/reserva.dto';
 import { RoomsService } from '../quartos/quartos.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 function generateBookingCode(): string {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -24,6 +25,7 @@ const RESERVATION_INCLUDE = {
       endereco: true,
       emailContato: true,
       website: true,
+      proprietario: { select: { id: true, nome: true, email: true } },
       cidade: { select: { id: true, nome: true, estado: true } },
       fotos: { select: { id: true, url: true, isCapa: true } },
     },
@@ -38,6 +40,7 @@ export class ReservationsService {
   constructor(
     private prisma: PrismaService,
     private roomsService: RoomsService,
+    private notifications: NotificationsService,
   ) {}
 
   async create(dto: CreateReservationDto, hospedeId: string) {
@@ -71,6 +74,32 @@ export class ReservationsService {
       },
       include: RESERVATION_INCLUDE,
     });
+
+    this.notifications.sendReservationCreated({
+      email: reserva.hospede.email,
+      nome: reserva.hospede.nome,
+      codigoReserva: reserva.codigoReserva,
+      estabelecimento: reserva.estabelecimento.nome,
+      checkIn: reserva.checkIn.toISOString().split('T')[0],
+      checkOut: reserva.checkOut.toISOString().split('T')[0],
+      valorTotal: Number(reserva.valorTotal),
+    }).catch(() => {});
+
+    const estabEmail = reserva.estabelecimento.emailContato || reserva.estabelecimento.proprietario.email;
+    if (estabEmail) {
+      this.notifications.sendReservationPendingForEstablishment({
+        email: estabEmail,
+        estabelecimento: reserva.estabelecimento.nome,
+        hospedeNome: reserva.hospede.nome,
+        codigoReserva: reserva.codigoReserva,
+        checkIn: reserva.checkIn.toISOString().split('T')[0],
+        checkOut: reserva.checkOut.toISOString().split('T')[0],
+        quarto: reserva.quarto.nome,
+        adultos: reserva.adultos,
+        criancas: reserva.criancas,
+        valorTotal: Number(reserva.valorTotal),
+      }).catch(() => {});
+    }
 
     return reserva;
   }
@@ -129,11 +158,25 @@ export class ReservationsService {
       throw new BadRequestException('Somente reservas com status SOLICITADA podem ser confirmadas');
     }
 
-    return this.prisma.reserva.update({
+    const updatedReserva = await this.prisma.reserva.update({
       where: { id },
       data: { status: 'CONFIRMADA' },
       include: RESERVATION_INCLUDE,
     });
+
+    this.notifications.sendReservationConfirmed({
+      email: updatedReserva.hospede.email,
+      nome: updatedReserva.hospede.nome,
+      codigoReserva: updatedReserva.codigoReserva,
+      estabelecimento: updatedReserva.estabelecimento.nome,
+      checkIn: updatedReserva.checkIn.toISOString().split('T')[0],
+      checkOut: updatedReserva.checkOut.toISOString().split('T')[0],
+      valorTotal: Number(updatedReserva.valorTotal),
+      pixKey: 'hospedarn@hospedarn.com.br',
+      pixType: 'E-mail',
+    }).catch(() => {});
+
+    return updatedReserva;
   }
 
   async cancel(id: string, dto: CancelReservationDto, userId: string, userRole: string) {
@@ -153,11 +196,21 @@ export class ReservationsService {
       throw new BadRequestException('Esta reserva não pode ser cancelada');
     }
 
-    return this.prisma.reserva.update({
+    const cancelledReserva = await this.prisma.reserva.update({
       where: { id },
       data: { status: 'CANCELADA', cancelamentoMotivo: dto.motivo },
       include: RESERVATION_INCLUDE,
     });
+
+    this.notifications.sendReservationCancelled({
+      email: cancelledReserva.hospede.email,
+      nome: cancelledReserva.hospede.nome,
+      codigoReserva: cancelledReserva.codigoReserva,
+      estabelecimento: cancelledReserva.estabelecimento.nome,
+      motivo: cancelledReserva.cancelamentoMotivo || undefined,
+    }).catch(() => {});
+
+    return cancelledReserva;
   }
 
   async finalize(id: string) {

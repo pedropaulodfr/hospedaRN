@@ -44,6 +44,31 @@ export class EmailWorker extends WorkerHost {
 
   private renderTemplate(template: string, context: Record<string, any>): string {
     const templates: Record<string, (ctx: any) => string> = {
+      'reserva-pending-establishment': (ctx) => `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background: linear-gradient(135deg, #0097A7, #00BCD4); padding: 30px; text-align: center;">
+            <h1 style="color: white; margin: 0;">🏖️ HospedaRN</h1>
+          </div>
+          <div style="padding: 30px; background: #f9f9f9;">
+            <h2>📋 Nova Reserva Pendente</h2>
+            <p>Olá! O estabelecimento <strong>${ctx.estabelecimento}</strong> recebeu uma nova solicitação de reserva.</p>
+            <div style="background: white; padding: 20px; border-radius: 8px; border-left: 4px solid #FF9800;">
+              <p><strong>Hóspede:</strong> ${ctx.hospedeNome}</p>
+              <p><strong>Código:</strong> ${ctx.codigoReserva}</p>
+              <p><strong>Quarto:</strong> ${ctx.quarto}</p>
+              <p><strong>Check-in:</strong> ${ctx.checkIn}</p>
+              <p><strong>Check-out:</strong> ${ctx.checkOut}</p>
+              <p><strong>Adultos:</strong> ${ctx.adultos}</p>
+              <p><strong>Crianças:</strong> ${ctx.criancas}</p>
+              <p><strong>Valor Total:</strong> R$ ${ctx.valorTotal?.toFixed(2)}</p>
+            </div>
+            <p style="margin-top: 20px;">Acesse o painel do estabelecimento para analisar e responder esta solicitação.</p>
+          </div>
+          <div style="padding: 15px; background: #0097A7; text-align: center;">
+            <p style="color: white; margin: 0; font-size: 12px;">HospedaRN — Hospedagens no Rio Grande do Norte</p>
+          </div>
+        </div>
+      `,
       'reserva-created': (ctx) => `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
           <div style="background: linear-gradient(135deg, #0097A7, #00BCD4); padding: 30px; text-align: center;">
@@ -72,14 +97,82 @@ export class EmailWorker extends WorkerHost {
             <h1 style="color: white; margin: 0;">🏖️ HospedaRN</h1>
           </div>
           <div style="padding: 30px; background: #f9f9f9;">
-            <h2>✅ Reserva Confirmada!</h2>
-            <p>Olá, <strong>${ctx.nome}</strong>! Sua reserva foi confirmada pelo estabelecimento.</p>
+            <h2>✅ Reserva Aprovada!</h2>
+            <p>Olá, <strong>${ctx.nome}</strong>! Sua reserva foi aprovada pelo estabelecimento.</p>
+            <div style="background: white; padding: 20px; border-radius: 8px; border-left: 4px solid #4CAF50;">
+              <p><strong>Código:</strong> ${ctx.codigoReserva}</p>
+              <p><strong>Estabelecimento:</strong> ${ctx.estabelecimento}</p>
+              <p><strong>Check-in:</strong> ${ctx.checkIn}</p>
+              <p><strong>Check-out:</strong> ${ctx.checkOut}</p>
+              <p><strong>Valor Total:</strong> R$ ${ctx.valorTotal?.toFixed(2)}</p>
+            </div>
+            <div style="background: #FFF3E0; padding: 20px; border-radius: 8px; border-left: 4px solid #FF9800; margin-top: 20px;">
+              <h3 style="margin: 0 0 10px 0;">💳 Pagamento</h3>
+              <p>Sua reserva está <strong>aguardando pagamento</strong>. Para confirmá-la, realize o pagamento via PIX:</p>
+              <p><strong>Chave PIX:</strong> ${ctx.pixKey}</p>
+              <p><strong>Tipo:</strong> ${ctx.pixType}</p>
+              <p style="margin-bottom: 0;">Após efetuar o pagamento, anexe o comprovante no sistema para que o estabelecimento possa confirmá-lo.</p>
+            </div>
+          </div>
+          <div style="padding: 15px; background: #0097A7; text-align: center;">
+            <p style="color: white; margin: 0; font-size: 12px;">HospedaRN — Hospedagens no Rio Grande do Norte</p>
+          </div>
+        </div>
+      `,
+      'reserva-cancelled': (ctx) => `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background: linear-gradient(135deg, #0097A7, #00BCD4); padding: 30px; text-align: center;">
+            <h1 style="color: white; margin: 0;">🏖️ HospedaRN</h1>
+          </div>
+          <div style="padding: 30px; background: #f9f9f9;">
+            <h2>❌ Reserva Recusada</h2>
+            <p>Olá, <strong>${ctx.nome}</strong>! Infelizmente sua reserva foi recusada.</p>
+            <div style="background: white; padding: 20px; border-radius: 8px; border-left: 4px solid #F44336;">
+              <p><strong>Código:</strong> ${ctx.codigoReserva}</p>
+              <p><strong>Estabelecimento:</strong> ${ctx.estabelecimento}</p>
+              ${ctx.motivo ? `<p><strong>Motivo:</strong> ${ctx.motivo}</p>` : ''}
+            </div>
+            <p style="margin-top: 20px;">Caso tenha dúvidas, entre em contato diretamente com o estabelecimento.</p>
+          </div>
+          <div style="padding: 15px; background: #0097A7; text-align: center;">
+            <p style="color: white; margin: 0; font-size: 12px;">HospedaRN — Hospedagens no Rio Grande do Norte</p>
+          </div>
+        </div>
+      `,
+      'pagamento-uploaded': (ctx) => `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background: linear-gradient(135deg, #0097A7, #00BCD4); padding: 30px; text-align: center;">
+            <h1 style="color: white; margin: 0;">🏖️ HospedaRN</h1>
+          </div>
+          <div style="padding: 30px; background: #f9f9f9;">
+            <h2>📄 Comprovante Recebido</h2>
+            <p>Olá, <strong>${ctx.nome}</strong>!</p>
+            <p>Seu comprovante de pagamento da reserva <strong>${ctx.codigoReserva}</strong> no estabelecimento <strong>${ctx.estabelecimento}</strong> foi enviado com sucesso.</p>
+            <p>As informações de pagamento foram encaminhadas para análise do estabelecimento. Você será notificado assim que a confirmação for realizada.</p>
+          </div>
+          <div style="padding: 15px; background: #0097A7; text-align: center;">
+            <p style="color: white; margin: 0; font-size: 12px;">HospedaRN — Hospedagens no Rio Grande do Norte</p>
+          </div>
+        </div>
+      `,
+      'pagamento-confirmed': (ctx) => `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background: linear-gradient(135deg, #0097A7, #00BCD4); padding: 30px; text-align: center;">
+            <h1 style="color: white; margin: 0;">🏖️ HospedaRN</h1>
+          </div>
+          <div style="padding: 30px; background: #f9f9f9;">
+            <h2>🎉 Pagamento Aprovado!</h2>
+            <p>Olá, <strong>${ctx.nome}</strong>! O pagamento da sua reserva foi aprovado pelo estabelecimento.</p>
             <div style="background: white; padding: 20px; border-radius: 8px; border-left: 4px solid #4CAF50;">
               <p><strong>Código:</strong> ${ctx.codigoReserva}</p>
               <p><strong>Estabelecimento:</strong> ${ctx.estabelecimento}</p>
               <p><strong>Check-in:</strong> ${ctx.checkIn}</p>
               <p><strong>Check-out:</strong> ${ctx.checkOut}</p>
             </div>
+            <p style="margin-top: 20px;">Sua reserva está confirmada! Agora é só comparecer ao local na data e horários agendados para se hospedar. 🎊</p>
+          </div>
+          <div style="padding: 15px; background: #0097A7; text-align: center;">
+            <p style="color: white; margin: 0; font-size: 12px;">HospedaRN — Hospedagens no Rio Grande do Norte</p>
           </div>
         </div>
       `,

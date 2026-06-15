@@ -13,6 +13,7 @@ export const api = axios.create({
   baseURL: API_BASE_URL,
   headers: { 'Content-Type': 'application/json' },
   withCredentials: false,
+  timeout: 30000,
 });
 
 // Request interceptor — inject access token and handle FormData

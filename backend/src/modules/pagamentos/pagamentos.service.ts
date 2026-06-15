@@ -2,10 +2,15 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { PrismaService } from '../../database/prisma.service';
 import { CreatePaymentDto } from './dto/pagamento.dto';
 import { UploadsService } from '../uploads/uploads.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class PaymentsService {
-  constructor(private prisma: PrismaService, private uploads: UploadsService) {}
+  constructor(
+    private prisma: PrismaService,
+    private uploads: UploadsService,
+    private notifications: NotificationsService,
+  ) {}
 
   async create(dto: CreatePaymentDto) {
     const reserva = await this.prisma.reserva.findUnique({ where: { id: dto.reservaId } });
@@ -20,23 +25,56 @@ export class PaymentsService {
 
   async uploadComprovante(paymentId: string, buffer: Buffer, filename: string, mimetype: string) {
     const result = await this.uploads.uploadFile(buffer, filename, mimetype, 'comprovantes');
-    return this.prisma.pagamento.update({
+    const pagamento = await this.prisma.pagamento.update({
       where: { id: paymentId },
       data: { comprovanteUrl: result.url, comprovanteS3Key: result.s3Key, status: 'CONFIRMADO' },
+      include: {
+        reserva: {
+          include: {
+            hospede: { select: { id: true, nome: true, email: true } },
+            estabelecimento: { select: { id: true, nome: true } },
+          },
+        },
+      },
     });
+
+    this.notifications.sendPaymentUploaded({
+      email: pagamento.reserva.hospede.email,
+      nome: pagamento.reserva.hospede.nome,
+      codigoReserva: pagamento.reserva.codigoReserva,
+      estabelecimento: pagamento.reserva.estabelecimento.nome,
+    }).catch(() => {});
+
+    return pagamento;
   }
 
   async confirm(paymentId: string) {
     const pagamento = await this.prisma.pagamento.findUnique({ where: { id: paymentId } });
     if (!pagamento) throw new NotFoundException('Pagamento nao encontrado');
+
+    const reserva = await this.prisma.reserva.update({
+      where: { id: pagamento.reservaId },
+      data: { status: 'AGUARDANDO_PAGAMENTO' },
+      include: {
+        hospede: { select: { id: true, nome: true, email: true } },
+        estabelecimento: { select: { id: true, nome: true } },
+      },
+    });
+
     const updated = await this.prisma.pagamento.update({
       where: { id: paymentId },
       data: { status: 'CONFIRMADO' },
     });
-    await this.prisma.reserva.update({
-      where: { id: pagamento.reservaId },
-      data: { status: 'AGUARDANDO_PAGAMENTO' },
-    });
+
+    this.notifications.sendPaymentConfirmed({
+      email: reserva.hospede.email,
+      nome: reserva.hospede.nome,
+      codigoReserva: reserva.codigoReserva,
+      estabelecimento: reserva.estabelecimento.nome,
+      checkIn: reserva.checkIn.toISOString().split('T')[0],
+      checkOut: reserva.checkOut.toISOString().split('T')[0],
+    }).catch(() => {});
+
     return updated;
   }
 

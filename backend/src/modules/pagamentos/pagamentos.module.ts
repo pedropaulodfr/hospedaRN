@@ -4,5 +4,6 @@ import { memoryStorage } from 'multer';
 import { PaymentsController } from './pagamentos.controller';
 import { PaymentsService } from './pagamentos.service';
 import { UploadsModule } from '../uploads/uploads.module';
-@Module({ imports: [MulterModule.register({ storage: memoryStorage() }), UploadsModule], controllers: [PaymentsController], providers: [PaymentsService], exports: [PaymentsService] })
+import { NotificationsModule } from '../notifications/notifications.module';
+@Module({ imports: [MulterModule.register({ storage: memoryStorage() }), UploadsModule, NotificationsModule], controllers: [PaymentsController], providers: [PaymentsService], exports: [PaymentsService] })
 export class PaymentsModule {}

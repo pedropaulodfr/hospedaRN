@@ -38,6 +38,56 @@ export class NotificationsService {
     });
   }
 
+  private async addToQueue(template: string, data: EmailJobData) {
+    try {
+      await this.emailQueue.add(template, data);
+    } catch (error) {
+      this.logger.warn(`Fila indisponível, enviando e-mail diretamente para ${data.to}`);
+      const html = this.renderFallbackTemplate(template, data.context);
+      await this.transporter.sendMail({
+        from: this.config.get('MAIL_FROM', '"HospedaRN" <noreply@hospedarn.com.br>'),
+        to: data.to,
+        subject: data.subject,
+        html,
+      });
+    }
+  }
+
+  private renderFallbackTemplate(template: string, ctx: Record<string, any>): string {
+    const lines = Object.entries(ctx).map(([k, v]) => `<p><strong>${k}:</strong> ${v}</p>`).join('');
+    return `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background: linear-gradient(135deg, #0097A7, #00BCD4); padding: 30px; text-align: center;">
+          <h1 style="color: white; margin: 0;">🏖️ HospedaRN</h1>
+        </div>
+        <div style="padding: 30px; background: #f9f9f9;">${lines}</div>
+        <div style="padding: 15px; background: #0097A7; text-align: center;">
+          <p style="color: white; margin: 0; font-size: 12px;">HospedaRN — Hospedagens no Rio Grande do Norte</p>
+        </div>
+      </div>
+    `;
+  }
+
+  async sendReservationPendingForEstablishment(data: {
+    email: string;
+    estabelecimento: string;
+    hospedeNome: string;
+    codigoReserva: string;
+    checkIn: string;
+    checkOut: string;
+    quarto: string;
+    adultos: number;
+    criancas: number;
+    valorTotal: number;
+  }) {
+    await this.addToQueue('reserva-pending-establishment', {
+      to: data.email,
+      subject: `Nova reserva pendente — ${data.estabelecimento}`,
+      template: 'reserva-pending-establishment',
+      context: data,
+    } as EmailJobData);
+  }
+
   async sendReservationCreated(data: {
     email: string;
     nome: string;
@@ -47,7 +97,7 @@ export class NotificationsService {
     checkOut: string;
     valorTotal: number;
   }) {
-    await this.emailQueue.add('reserva-created', {
+    await this.addToQueue('reserva-created', {
       to: data.email,
       subject: `Reserva ${data.codigoReserva} criada com sucesso!`,
       template: 'reserva-created',
@@ -62,8 +112,11 @@ export class NotificationsService {
     estabelecimento: string;
     checkIn: string;
     checkOut: string;
+    valorTotal: number;
+    pixKey: string;
+    pixType: string;
   }) {
-    await this.emailQueue.add('reserva-confirmed', {
+    await this.addToQueue('reserva-confirmed', {
       to: data.email,
       subject: `Sua reserva ${data.codigoReserva} foi confirmada!`,
       template: 'reserva-confirmed',
@@ -75,12 +128,27 @@ export class NotificationsService {
     email: string;
     nome: string;
     codigoReserva: string;
+    estabelecimento: string;
     motivo?: string;
   }) {
-    await this.emailQueue.add('reserva-cancelled', {
+    await this.addToQueue('reserva-cancelled', {
       to: data.email,
       subject: `Reserva ${data.codigoReserva} cancelada`,
       template: 'reserva-cancelled',
+      context: data,
+    } as EmailJobData);
+  }
+
+  async sendPaymentUploaded(data: {
+    email: string;
+    nome: string;
+    codigoReserva: string;
+    estabelecimento: string;
+  }) {
+    await this.addToQueue('pagamento-uploaded', {
+      to: data.email,
+      subject: `Comprovante recebido — Reserva ${data.codigoReserva}`,
+      template: 'pagamento-uploaded',
       context: data,
     } as EmailJobData);
   }
@@ -89,12 +157,13 @@ export class NotificationsService {
     email: string;
     nome: string;
     codigoReserva: string;
-    valor: number;
-    metodo: string;
+    estabelecimento: string;
+    checkIn: string;
+    checkOut: string;
   }) {
-    await this.emailQueue.add('pagamento-confirmed', {
+    await this.addToQueue('pagamento-confirmed', {
       to: data.email,
-      subject: `Pagamento confirmado — Reserva ${data.codigoReserva}`,
+      subject: `Pagamento aprovado — Reserva ${data.codigoReserva}`,
       template: 'pagamento-confirmed',
       context: data,
     } as EmailJobData);

@@ -1198,60 +1198,67 @@ export default function GuestReservations() {
                             </Box>
                           )}
 
-                          <Divider sx={{ my: 3 }} />
+                          {(selectedPaymentMethod === 'PIX' || selectedPaymentMethod === 'BOLETO') && (
+                            <>
+                              <Divider sx={{ my: 3 }} />
 
-                          {/* File upload section */}
-                          <Typography variant="body2" sx={{ fontWeight: 700, mb: 1.5 }}>
-                            Enviar Comprovante (Obrigatório para PIX/Boleto)
-                          </Typography>
-                          
-                          <Box
-                            sx={{
-                              border: '2px dashed rgba(0,0,0,0.12)',
-                              borderRadius: '12px',
-                              p: 2.5,
-                              textAlign: 'center',
-                              bgcolor: '#F8FAFC',
-                              cursor: 'pointer',
-                              transition: 'all 0.2s',
-                              '&:hover': {
-                                borderColor: theme.palette.primary.main,
-                                bgcolor: alpha(theme.palette.primary.main, 0.02),
-                              },
-                              position: 'relative',
-                            }}
-                            component="label"
-                          >
-                            <input
-                              type="file"
-                              accept="image/*,application/pdf"
-                              hidden
-                              onChange={handleFileChange}
-                            />
-                            <CloudUpload color="primary" sx={{ fontSize: 32, mb: 1 }} />
-                            <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                              {selectedFile ? selectedFile.name : 'Clique para selecionar o arquivo'}
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                              Suporta imagens (PNG, JPG) ou PDFs de até 5MB.
-                            </Typography>
-                          </Box>
+                              <Typography variant="body2" sx={{ fontWeight: 700, mb: 1.5 }}>
+                                Enviar Comprovante (Obrigatório para {selectedPaymentMethod === 'PIX' ? 'PIX' : 'Boleto'})
+                              </Typography>
 
-                          {selectedFile && (
-                            <Button
-                              variant="contained"
-                              color="primary"
-                              fullWidth
-                              sx={{ mt: 2, borderRadius: '8px' }}
-                              onClick={handleUploadComprovante}
-                              disabled={uploadingComprovante}
-                            >
-                              {uploadingComprovante ? (
-                                <CircularProgress size={20} color="inherit" />
-                              ) : (
-                                'Enviar Comprovante de Pagamento'
+                              <Box
+                                sx={{
+                                  border: '2px dashed rgba(0,0,0,0.12)',
+                                  borderRadius: '12px',
+                                  p: 3,
+                                  textAlign: 'center',
+                                  bgcolor: '#F8FAFC',
+                                  cursor: 'pointer',
+                                  transition: 'all 0.2s',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  minHeight: 100,
+                                  '&:hover': {
+                                    borderColor: theme.palette.primary.main,
+                                    bgcolor: alpha(theme.palette.primary.main, 0.02),
+                                  },
+                                }}
+                                component="label"
+                              >
+                                <input
+                                  type="file"
+                                  accept="image/*,application/pdf"
+                                  hidden
+                                  onChange={handleFileChange}
+                                />
+                                <CloudUpload color="primary" sx={{ fontSize: 36, mb: 1 }} />
+                                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                  {selectedFile ? selectedFile.name : 'Clique para selecionar o arquivo'}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
+                                  Suporta imagens (PNG, JPG) ou PDFs de até 5MB.
+                                </Typography>
+                              </Box>
+
+                              {selectedFile && (
+                                <Button
+                                  variant="contained"
+                                  color="primary"
+                                  fullWidth
+                                  sx={{ mt: 2, borderRadius: '8px', py: 1.2 }}
+                                  onClick={handleUploadComprovante}
+                                  disabled={uploadingComprovante}
+                                >
+                                  {uploadingComprovante ? (
+                                    <CircularProgress size={20} color="inherit" />
+                                  ) : (
+                                    'Enviar Comprovante de Pagamento'
+                                  )}
+                                </Button>
                               )}
-                            </Button>
+                            </>
                           )}
                         </Box>
                       )}

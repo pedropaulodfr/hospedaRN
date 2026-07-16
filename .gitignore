@@ -36,3 +36,6 @@ Thumbs.db
 
 # Implementations
 implementations/
+
+# Tools / MCP binaries
+.tools/

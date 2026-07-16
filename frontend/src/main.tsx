@@ -15,7 +15,8 @@ import '@fontsource/outfit/700.css';
 import '@fontsource/outfit/800.css';
 import 'leaflet/dist/leaflet.css';
 import App from './App';
-import hospedaRNTheme from './theme';
+import { getTheme } from './theme';
+import { useThemeStore } from './stores/themeStore';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -27,33 +28,46 @@ const queryClient = new QueryClient({
   },
 });
 
+function ThemedApp() {
+  const mode = useThemeStore((state) => state.mode);
+  const theme = getTheme(mode);
+
+  React.useEffect(() => {
+    document.body.style.backgroundColor = theme.palette.background.default;
+  }, [theme]);
+
+  return (
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <App />
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          duration: 4000,
+          style: {
+            background: mode === 'dark' ? '#1e293b' : '#1A2332',
+            color: '#ffffff',
+            borderRadius: '12px',
+            fontFamily: '"Inter", sans-serif',
+            fontSize: '14px',
+            padding: '12px 16px',
+          },
+          success: {
+            iconTheme: { primary: '#10B981', secondary: '#fff' },
+          },
+          error: {
+            iconTheme: { primary: '#EF4444', secondary: '#fff' },
+          },
+        }}
+      />
+    </ThemeProvider>
+  );
+}
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider theme={hospedaRNTheme}>
-        <CssBaseline />
-        <App />
-        <Toaster
-          position="top-right"
-          toastOptions={{
-            duration: 4000,
-            style: {
-              background: '#1A2332',
-              color: '#ffffff',
-              borderRadius: '12px',
-              fontFamily: '"Inter", sans-serif',
-              fontSize: '14px',
-              padding: '12px 16px',
-            },
-            success: {
-              iconTheme: { primary: '#10B981', secondary: '#fff' },
-            },
-            error: {
-              iconTheme: { primary: '#EF4444', secondary: '#fff' },
-            },
-          }}
-        />
-      </ThemeProvider>
+      <ThemedApp />
     </QueryClientProvider>
   </React.StrictMode>,
 );

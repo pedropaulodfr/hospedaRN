@@ -857,19 +857,19 @@ export default function EstablishmentDetailPage() {
                 </form>
 
                 {/* Owner info */}
-                <Box sx={{ mt: 3, p: 2, borderRadius: 3, bgcolor: 'grey.50', border: '1px solid', borderColor: 'grey.100' }}>
+                <Box sx={(t) => ({ mt: 3, p: 2, borderRadius: 3, bgcolor: t.palette.mode === 'dark' ? '#243044' : 'grey.50', border: '1px solid', borderColor: 'divider' })}>
                   <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1, fontWeight: 700, textTransform: 'uppercase' }}>
                     Contato do Proprietário
                   </Typography>
                   <Typography variant="body2" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                    <People sx={{ fontSize: 16, color: 'text.secondary' }} /> {establishment.proprietario?.nome}
+                    <People sx={{ fontSize: 16, color: 'text.primary' }} /> {establishment.proprietario?.nome}
                   </Typography>
                   <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                    <Email sx={{ fontSize: 16, color: 'text.secondary' }} /> {establishment.emailContato || establishment.proprietario?.email}
+                    <Email sx={{ fontSize: 16, color: 'text.primary' }} /> {establishment.emailContato || establishment.proprietario?.email}
                   </Typography>
                   {establishment.contato && (
                     <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Phone sx={{ fontSize: 16, color: 'text.secondary' }} /> {establishment.contato}
+                      <Phone sx={{ fontSize: 16, color: 'text.primary' }} /> {establishment.contato}
                     </Typography>
                   )}
                 </Box>
@@ -1102,7 +1102,7 @@ export default function EstablishmentDetailPage() {
             )}
 
             {paymentMethod === 'CARTAO' && (
-              <Box sx={{ p: 2, borderRadius: 3, border: '1px solid', borderColor: 'grey.300', bgcolor: 'grey.50' }}>
+              <Box sx={(t) => ({ p: 2, borderRadius: 3, border: '1px solid', borderColor: 'divider', bgcolor: t.palette.mode === 'dark' ? '#1e293b' : 'grey.50' })}>
                 <Typography variant="subtitle2" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
                   <CreditCard sx={{ color: 'text.secondary' }} /> Simulação de Cartão de Crédito
                 </Typography>

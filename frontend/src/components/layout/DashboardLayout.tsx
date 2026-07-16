@@ -133,7 +133,7 @@ export default function DashboardLayout({ userType }: DashboardLayoutProps) {
       )}
 
       {/* Navigation */}
-      <List sx={{ flex: 1, px: collapsed ? 0.5 : 1.5, py: 0.5 }}>
+      <List sx={{ flex: 1, overflow: 'auto', px: collapsed ? 0.5 : 1.5, py: 0.5 }}>
         {menu.filter((item) => {
           if (!item.permission) return true;
           if (user?.permissoes && user.permissoes.length > 0) {

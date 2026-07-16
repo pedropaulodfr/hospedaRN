@@ -8,9 +8,11 @@ import {
   Dashboard, Hotel, CalendarMonth, Photo, AttachMoney, Assessment,
   Favorite, Person, Map, EmojiEvents, LocationCity, Settings, Description,
   Logout, ChevronLeft, BeachAccess, Notifications, Menu as MenuIcon,
+  DarkMode, LightMode,
 } from '@mui/icons-material';
 import { useState } from 'react';
 import { useAuthStore } from '../../stores/authStore';
+import { useThemeStore } from '../../stores/themeStore';
 import toast from 'react-hot-toast';
 
 const DRAWER_WIDTH = 260;
@@ -68,6 +70,27 @@ export default function DashboardLayout({ userType }: DashboardLayoutProps) {
   const menu = menuConfig[userType];
   const roleInfo = roleLabel[userType];
   const drawerWidth = collapsed ? 72 : DRAWER_WIDTH;
+
+  const ThemeToggle = ({ collapsed }: { collapsed: boolean }) => {
+    const { mode, toggleMode } = useThemeStore();
+    return (
+      <Tooltip title={collapsed ? (mode === 'dark' ? 'Modo Claro' : 'Modo Escuro') : ''} placement="right">
+        <ListItemButton
+          onClick={toggleMode}
+          sx={{
+            borderRadius: 2, px: collapsed ? 1.5 : 2, justifyContent: collapsed ? 'center' : 'flex-start',
+            color: mode === 'dark' ? '#FFB74D' : 'text.secondary', minWidth: collapsed ? 0 : 'auto',
+            '&:hover': { bgcolor: 'rgba(0,151,167,0.08)' },
+          }}
+        >
+          <ListItemIcon sx={{ minWidth: collapsed ? 0 : 36, color: 'inherit' }}>
+            {mode === 'dark' ? <LightMode /> : <DarkMode />}
+          </ListItemIcon>
+          {!collapsed && <ListItemText primary={<Typography sx={{ fontWeight: 500 }}>{mode === 'dark' ? 'Modo Claro' : 'Modo Escuro'}</Typography>} />}
+        </ListItemButton>
+      </Tooltip>
+    );
+  };
 
   const handleLogout = () => {
     logout();
@@ -175,7 +198,8 @@ export default function DashboardLayout({ userType }: DashboardLayoutProps) {
       <Divider sx={{ mx: 1.5 }} />
 
       {/* Footer actions */}
-      <Box sx={{ p: 1.5 }}>
+      <Box sx={{ p: collapsed ? 0.5 : 1.5 }}>
+        <ThemeToggle collapsed={collapsed} />
         <Tooltip title={collapsed ? 'Sair' : ''} placement="right">
           <ListItemButton
             onClick={handleLogout}
@@ -188,7 +212,7 @@ export default function DashboardLayout({ userType }: DashboardLayoutProps) {
           </ListItemButton>
         </Tooltip>
         {!collapsed && (
-          <Box sx={{ mt: 1, p: 1 }}>
+          <Box sx={{ p: 1 }}>
             <Chip
               label="Ver site público"
               size="small"

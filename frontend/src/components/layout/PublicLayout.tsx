@@ -2,14 +2,15 @@ import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   AppBar, Toolbar, Box, Button, IconButton, Avatar, Menu, MenuItem,
   Container, Drawer, List, ListItem, ListItemButton, ListItemText,
-  Typography, Divider, useScrollTrigger, Slide, useTheme, useMediaQuery,
+  Typography, Divider, useScrollTrigger, Slide, useTheme, useMediaQuery, alpha,
 } from '@mui/material';
 import {
   Menu as MenuIcon, BeachAccess, Search, Event, Login, PersonAdd,
-  AccountCircle, Logout, Dashboard,
+  AccountCircle, Logout, Dashboard, DarkMode, LightMode,
 } from '@mui/icons-material';
 import { useState } from 'react';
 import { useAuthStore } from '../../stores/authStore';
+import { useThemeStore } from '../../stores/themeStore';
 import toast from 'react-hot-toast';
 
 const navLinks = [
@@ -27,6 +28,8 @@ export default function PublicLayout() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
+  const themeMode = useThemeStore((state) => state.mode);
+  const toggleTheme = useThemeStore((state) => state.toggleMode);
   const trigger = useScrollTrigger({ disableHysteresis: true, threshold: 10 });
 
   const handleLogout = () => {
@@ -51,9 +54,11 @@ export default function PublicLayout() {
         position="fixed"
         elevation={trigger ? 4 : 0}
         sx={{
-          bgcolor: trigger ? 'rgba(255,255,255,0.97)' : 'rgba(255,255,255,0.9)',
+          bgcolor: trigger
+            ? alpha(theme.palette.background.paper, 0.97)
+            : alpha(theme.palette.background.paper, 0.9),
           backdropFilter: 'blur(12px)',
-          borderBottom: trigger ? '1px solid rgba(0,0,0,0.08)' : 'none',
+          borderBottom: trigger ? `1px solid ${theme.palette.divider}` : 'none',
           transition: 'all 0.3s ease',
         }}
       >
@@ -87,6 +92,11 @@ export default function PublicLayout() {
             </Link>
 
             <Box sx={{ flexGrow: 1 }} />
+
+            {/* Theme Toggle */}
+            <IconButton onClick={toggleTheme} sx={{ mr: 1, color: 'text.secondary' }}>
+              {themeMode === 'dark' ? <LightMode /> : <DarkMode />}
+            </IconButton>
 
             {/* Desktop Nav */}
             {!isMobile && (
@@ -218,7 +228,9 @@ export default function PublicLayout() {
         component="footer"
         sx={{
           mt: 8, py: 6,
-          background: 'linear-gradient(135deg, #1A2332 0%, #0d1421 100%)',
+          background: (t) => t.palette.mode === 'dark'
+            ? 'linear-gradient(135deg, #0f172a 0%, #020617 100%)'
+            : 'linear-gradient(135deg, #1A2332 0%, #0d1421 100%)',
           color: 'white',
         }}
       >

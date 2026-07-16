@@ -543,8 +543,8 @@ export default function GuestReservations() {
             const statusConfig = statusMap[reservation.status] || {
               label: reservation.status,
               color: 'default' as const,
-              bg: '#f1f5f9',
-              text: '#475569',
+              bg: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.08)' : '#f1f5f9',
+              text: theme.palette.text.secondary,
             };
 
             const coverPhoto =
@@ -801,7 +801,13 @@ export default function GuestReservations() {
                   <Info color="primary" /> Informações Gerais
                 </Typography>
 
-                <Paper sx={{ p: 2.5, mb: 3, bgcolor: '#F8FAFC', borderRadius: '12px' }}>
+                <Paper
+                  sx={(t) => ({
+                    p: 2.5, mb: 3,
+                    bgcolor: t.palette.mode === 'dark' ? alpha(t.palette.primary.main, 0.06) : '#F8FAFC',
+                    borderRadius: '12px',
+                  })}
+                >
                   <Box sx={{ mb: 2 }}>
                     <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>Hospedagem</Typography>
                     <Typography variant="body1" sx={{ fontWeight: 700 }}>
@@ -880,7 +886,13 @@ export default function GuestReservations() {
                   <Phone color="primary" /> Contato do Estabelecimento
                 </Typography>
 
-                <Paper sx={{ p: 2.5, bgcolor: '#F8FAFC', borderRadius: '12px' }}>
+                <Paper
+                  sx={(t) => ({
+                    p: 2.5,
+                    bgcolor: t.palette.mode === 'dark' ? alpha(t.palette.primary.main, 0.06) : '#F8FAFC',
+                    borderRadius: '12px',
+                  })}
+                >
                   {selectedReservation.estabelecimento.contato && (
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1.5 }}>
                       <Phone sx={{ color: 'text.secondary', fontSize: 20 }} />
@@ -944,7 +956,7 @@ export default function GuestReservations() {
                         Reserva cancelada.
                       </Alert>
                       {selectedReservation.cancelamentoMotivo && (
-                        <Paper sx={{ p: 2, bgcolor: '#FFF5F5', color: '#C53030', borderRadius: '8px' }}>
+                        <Paper sx={(t) => ({ p: 2, bgcolor: t.palette.mode === 'dark' ? alpha(t.palette.error.main, 0.12) : '#FFF5F5', color: t.palette.mode === 'dark' ? t.palette.error.light : '#C53030', borderRadius: '8px' })}>
                           <Typography variant="caption" sx={{ fontWeight: 700, display: 'block' }}>
                             Motivo do Cancelamento:
                           </Typography>
@@ -1100,7 +1112,7 @@ export default function GuestReservations() {
                           {/* BOLETO Method */}
                           {!paymentLoading && selectedPaymentMethod === 'BOLETO' && (
                             <Box sx={{ mb: 3 }}>
-                              <Paper sx={{ p: 2.5, bgcolor: '#F8FAFC', border: '1px dashed rgba(0,0,0,0.1)', borderRadius: '8px', mb: 2 }}>
+                              <Paper sx={(t) => ({ p: 2.5, bgcolor: t.palette.mode === 'dark' ? alpha(t.palette.primary.main, 0.06) : '#F8FAFC', border: `1px dashed ${t.palette.divider}`, borderRadius: '8px', mb: 2 })}>
                                 <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
                                   Linha Digitável do Boleto
                                 </Typography>
@@ -1207,12 +1219,13 @@ export default function GuestReservations() {
                               </Typography>
 
                               <Box
-                                sx={{
-                                  border: '2px dashed rgba(0,0,0,0.12)',
+                                sx={(t) => ({
+                                  border: '2px dashed',
+                                  borderColor: t.palette.mode === 'dark' ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.12)',
                                   borderRadius: '12px',
                                   p: 3,
                                   textAlign: 'center',
-                                  bgcolor: '#F8FAFC',
+                                  bgcolor: t.palette.mode === 'dark' ? alpha(t.palette.primary.main, 0.06) : '#F8FAFC',
                                   cursor: 'pointer',
                                   transition: 'all 0.2s',
                                   display: 'flex',
@@ -1224,7 +1237,7 @@ export default function GuestReservations() {
                                     borderColor: theme.palette.primary.main,
                                     bgcolor: alpha(theme.palette.primary.main, 0.02),
                                   },
-                                }}
+                                })}
                                 component="label"
                               >
                                 <input

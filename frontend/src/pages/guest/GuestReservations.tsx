@@ -523,7 +523,7 @@ export default function GuestReservations() {
 
       {/* Empty State */}
       {!isLoading && filteredReservations.length === 0 && (
-        <Paper sx={{ p: 6, textAlign: 'center', borderRadius: '16px', border: '1px dashed rgba(0,0,0,0.1)' }}>
+        <Paper sx={(t) => ({ p: 6, textAlign: 'center', borderRadius: '16px', border: `1px dashed ${t.palette.divider}` })}>
           <Typography variant="h6" color="text.secondary" sx={{ mb: 1, fontWeight: 600 }}>
             Nenhuma reserva encontrada
           </Typography>
@@ -771,13 +771,13 @@ export default function GuestReservations() {
         }}
       >
         <DialogTitle
-          sx={{
+          sx={(t) => ({
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
             p: 3,
-            borderBottom: '1px solid rgba(0,0,0,0.06)',
-          }}
+            borderBottom: `1px solid ${t.palette.divider}`,
+          })}
         >
           <Box>
             <Typography variant="h5" sx={{ fontWeight: 800, fontFamily: '"Outfit", sans-serif' }}>
@@ -804,7 +804,7 @@ export default function GuestReservations() {
                 <Paper
                   sx={(t) => ({
                     p: 2.5, mb: 3,
-                    bgcolor: t.palette.mode === 'dark' ? 'rgba(255,255,255,0.06)' : '#F8FAFC',
+                    bgcolor: t.palette.mode === 'dark' ? '#243044' : '#F8FAFC',
                     borderRadius: '12px',
                     border: `1px solid ${t.palette.divider}`,
                   })}
@@ -890,26 +890,26 @@ export default function GuestReservations() {
                 <Paper
                   sx={(t) => ({
                     p: 2.5,
-                    bgcolor: t.palette.mode === 'dark' ? 'rgba(255,255,255,0.06)' : '#F8FAFC',
+                      bgcolor: t.palette.mode === 'dark' ? '#243044' : '#F8FAFC',
                     borderRadius: '12px',
                     border: `1px solid ${t.palette.divider}`,
                   })}
                 >
                   {selectedReservation.estabelecimento.contato && (
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1.5 }}>
-                      <Phone sx={{ color: 'text.secondary', fontSize: 20 }} />
+                      <Phone sx={{ color: 'text.primary', fontSize: 20 }} />
                       <Typography variant="body2">{selectedReservation.estabelecimento.contato}</Typography>
                     </Box>
                   )}
                   {selectedReservation.estabelecimento.emailContato && (
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1.5 }}>
-                      <Email sx={{ color: 'text.secondary', fontSize: 20 }} />
+                      <Email sx={{ color: 'text.primary', fontSize: 20 }} />
                       <Typography variant="body2">{selectedReservation.estabelecimento.emailContato}</Typography>
                     </Box>
                   )}
                   {selectedReservation.estabelecimento.website && (
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                      <OpenInNew sx={{ color: 'text.secondary', fontSize: 20 }} />
+                      <OpenInNew sx={{ color: 'text.primary', fontSize: 20 }} />
                       <Typography
                         variant="body2"
                         component="a"
@@ -935,7 +935,7 @@ export default function GuestReservations() {
                   <Payment color="primary" /> Financeiro e Pagamento
                 </Typography>
 
-                <Paper sx={{ p: 2.5, borderRadius: '12px', border: '1px solid rgba(0,0,0,0.06)' }}>
+                <Paper sx={(t) => ({ p: 2.5, borderRadius: '12px', border: `1px solid ${t.palette.divider}` })}>
                   {/* Total amount header */}
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
                     <Typography variant="body1" sx={{ fontWeight: 600 }}>Valor Cobrado</Typography>
@@ -1086,7 +1086,8 @@ export default function GuestReservations() {
                                       sx={{
                                         width: 160,
                                         height: 160,
-                                        border: '1px solid rgba(0,0,0,0.08)',
+                                        border: '1px solid',
+                                        borderColor: 'divider',
                                         borderRadius: '12px',
                                         p: 1,
                                         mb: 2,
@@ -1284,7 +1285,7 @@ export default function GuestReservations() {
             </Grid>
           )}
         </DialogContent>
-        <DialogActions sx={{ p: 3, borderTop: '1px solid rgba(0,0,0,0.06)' }}>
+        <DialogActions sx={(t) => ({ p: 3, borderTop: `1px solid ${t.palette.divider}` })}>
           {selectedReservation &&
             (selectedReservation.status === 'SOLICITADA' ||
               selectedReservation.status === 'CONFIRMADA' ||

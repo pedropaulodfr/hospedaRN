@@ -804,8 +804,9 @@ export default function GuestReservations() {
                 <Paper
                   sx={(t) => ({
                     p: 2.5, mb: 3,
-                    bgcolor: t.palette.mode === 'dark' ? alpha(t.palette.primary.main, 0.06) : '#F8FAFC',
+                    bgcolor: t.palette.mode === 'dark' ? 'rgba(255,255,255,0.06)' : '#F8FAFC',
                     borderRadius: '12px',
+                    border: `1px solid ${t.palette.divider}`,
                   })}
                 >
                   <Box sx={{ mb: 2 }}>
@@ -889,8 +890,9 @@ export default function GuestReservations() {
                 <Paper
                   sx={(t) => ({
                     p: 2.5,
-                    bgcolor: t.palette.mode === 'dark' ? alpha(t.palette.primary.main, 0.12) : '#F8FAFC',
+                    bgcolor: t.palette.mode === 'dark' ? 'rgba(255,255,255,0.06)' : '#F8FAFC',
                     borderRadius: '12px',
+                    border: `1px solid ${t.palette.divider}`,
                   })}
                 >
                   {selectedReservation.estabelecimento.contato && (
@@ -1112,7 +1114,7 @@ export default function GuestReservations() {
                           {/* BOLETO Method */}
                           {!paymentLoading && selectedPaymentMethod === 'BOLETO' && (
                             <Box sx={{ mb: 3 }}>
-                              <Paper sx={(t) => ({ p: 2.5, bgcolor: t.palette.mode === 'dark' ? alpha(t.palette.primary.main, 0.06) : '#F8FAFC', border: `1px dashed ${t.palette.divider}`, borderRadius: '8px', mb: 2 })}>
+                              <Paper sx={(t) => ({ p: 2.5, bgcolor: t.palette.mode === 'dark' ? 'rgba(255,255,255,0.06)' : '#F8FAFC', border: `1px dashed ${t.palette.divider}`, borderRadius: '8px', mb: 2 })}>
                                 <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
                                   Linha Digitável do Boleto
                                 </Typography>
@@ -1221,11 +1223,11 @@ export default function GuestReservations() {
                               <Box
                                 sx={(t) => ({
                                   border: '2px dashed',
-                                  borderColor: t.palette.mode === 'dark' ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.12)',
+                                  borderColor: t.palette.mode === 'dark' ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.12)',
                                   borderRadius: '12px',
                                   p: 3,
                                   textAlign: 'center',
-                                  bgcolor: t.palette.mode === 'dark' ? alpha(t.palette.primary.main, 0.06) : '#F8FAFC',
+                                  bgcolor: t.palette.mode === 'dark' ? 'rgba(255,255,255,0.04)' : '#F8FAFC',
                                   cursor: 'pointer',
                                   transition: 'all 0.2s',
                                   display: 'flex',

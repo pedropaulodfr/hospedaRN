@@ -98,18 +98,20 @@ export default function ProfileSettings() {
         <Grid size={{ xs: 12, md: 5 }}>
           <Paper
             elevation={0}
-            sx={{
+            sx={(t) => ({
               p: 4,
               borderRadius: '24px',
               border: '1px solid',
               borderColor: 'divider',
               boxShadow: '0 8px 32px 0 rgba(0,0,0,0.02)',
-              background: 'linear-gradient(135deg, rgba(255,255,255,0.9), rgba(255,255,255,0.95))',
+              background: t.palette.mode === 'dark'
+                ? 'linear-gradient(135deg, rgba(30,41,59,0.9), rgba(30,41,59,0.95))'
+                : 'linear-gradient(135deg, rgba(255,255,255,0.9), rgba(255,255,255,0.95))',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
               textAlign: 'center',
-            }}
+            })}
           >
             <Avatar
               sx={{
@@ -145,7 +147,7 @@ export default function ProfileSettings() {
 
             <Box sx={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 2.5 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, textAlign: 'left' }}>
-                <Avatar sx={{ bgcolor: 'rgba(0,151,167,0.06)', color: '#0097A7', width: 40, height: 40 }}>
+                <Avatar sx={(t) => ({ bgcolor: t.palette.mode === 'dark' ? 'rgba(38,198,218,0.15)' : 'rgba(0,151,167,0.06)', color: t.palette.mode === 'dark' ? '#26C6DA' : '#0097A7', width: 40, height: 40 })}>
                   <Email fontSize="small" />
                 </Avatar>
                 <Box sx={{ overflow: 'hidden' }}>
@@ -159,7 +161,7 @@ export default function ProfileSettings() {
               </Box>
 
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, textAlign: 'left' }}>
-                <Avatar sx={{ bgcolor: 'rgba(255,112,67,0.06)', color: '#FF7043', width: 40, height: 40 }}>
+                <Avatar sx={(t) => ({ bgcolor: t.palette.mode === 'dark' ? 'rgba(255,138,101,0.15)' : 'rgba(255,112,67,0.06)', color: t.palette.mode === 'dark' ? '#FF8A65' : '#FF7043', width: 40, height: 40 })}>
                   <Phone fontSize="small" />
                 </Avatar>
                 <Box>

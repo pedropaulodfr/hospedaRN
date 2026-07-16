@@ -889,7 +889,7 @@ export default function GuestReservations() {
                 <Paper
                   sx={(t) => ({
                     p: 2.5,
-                    bgcolor: t.palette.mode === 'dark' ? alpha(t.palette.primary.main, 0.06) : '#F8FAFC',
+                    bgcolor: t.palette.mode === 'dark' ? alpha(t.palette.primary.main, 0.12) : '#F8FAFC',
                     borderRadius: '12px',
                   })}
                 >

@@ -857,19 +857,19 @@ export default function EstablishmentDetailPage() {
                 </form>
 
                 {/* Owner info */}
-                <Box sx={(t) => ({ mt: 3, p: 2, borderRadius: 3, bgcolor: t.palette.mode === 'dark' ? '#243044' : 'grey.50', border: '1px solid', borderColor: 'divider' })}>
+                <Box sx={(t) => ({ mt: 3, p: 2, borderRadius: 3, bgcolor: t.palette.mode === 'dark' ? '#243044' : 'grey.50', border: '1px solid', borderColor: 'divider', overflow: 'hidden' })}>
                   <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1, fontWeight: 700, textTransform: 'uppercase' }}>
                     Contato do Proprietário
                   </Typography>
-                  <Typography variant="body2" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                    <People sx={{ fontSize: 16, color: 'text.primary' }} /> {establishment.proprietario?.nome}
+                  <Typography variant="body2" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, mb: 0.5, minWidth: 0, overflowWrap: 'break-word' }}>
+                    <People sx={{ fontSize: 16, color: 'text.primary', flexShrink: 0 }} /> <Box component="span" sx={{ minWidth: 0 }}>{establishment.proprietario?.nome}</Box>
                   </Typography>
-                  <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                    <Email sx={{ fontSize: 16, color: 'text.primary' }} /> {establishment.emailContato || establishment.proprietario?.email}
+                  <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5, minWidth: 0, overflowWrap: 'break-word' }}>
+                    <Email sx={{ fontSize: 16, color: 'text.primary', flexShrink: 0 }} /> <Box component="span" sx={{ minWidth: 0 }}>{establishment.emailContato || establishment.proprietario?.email}</Box>
                   </Typography>
                   {establishment.contato && (
-                    <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Phone sx={{ fontSize: 16, color: 'text.primary' }} /> {establishment.contato}
+                    <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0, overflowWrap: 'break-word' }}>
+                      <Phone sx={{ fontSize: 16, color: 'text.primary', flexShrink: 0 }} /> <Box component="span" sx={{ minWidth: 0 }}>{establishment.contato}</Box>
                     </Typography>
                   )}
                 </Box>

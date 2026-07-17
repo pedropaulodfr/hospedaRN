@@ -13,8 +13,8 @@ export class EmailWorker extends WorkerHost {
     super();
     this.transporter = nodemailer.createTransport({
       host: config.get('MAIL_HOST'),
-      port: config.get<number>('MAIL_PORT', 587),
-      secure: false,
+      port: 465,
+      secure: true,
       auth: {
         user: config.get('MAIL_USER'),
         pass: config.get('MAIL_PASS'),

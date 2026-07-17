@@ -48,7 +48,7 @@ export default function PublicLayout() {
   };
 
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', bgcolor: 'background.default' }}>
       {/* AppBar */}
       <AppBar
         position="fixed"
@@ -219,7 +219,7 @@ export default function PublicLayout() {
       </Drawer>
 
       {/* Page Content */}
-      <Box sx={{ mt: '70px' }}>
+      <Box sx={{ mt: '70px', flex: 1 }}>
         <Outlet />
       </Box>
 

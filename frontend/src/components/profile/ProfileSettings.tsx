@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   Box,
   Typography,
@@ -11,6 +11,8 @@ import {
   IconButton,
   InputAdornment,
   CircularProgress,
+  Tooltip,
+  Badge,
 } from '@mui/material';
 import {
   Visibility,
@@ -20,12 +22,21 @@ import {
   Email,
   Phone,
   Security,
+  PhotoCamera,
 } from '@mui/icons-material';
 import { useAuthStore } from '../../stores/authStore';
 import { usersApi } from '../../services/api';
 import toast from 'react-hot-toast';
 
-export default function ProfileSettings() {
+interface ProfileSettingsProps {
+  fotoPerfil?: string | null;
+  estabelecimentoNome?: string;
+  onFotoPerfilChange?: (file: File) => void;
+  uploadingFoto?: boolean;
+}
+
+export default function ProfileSettings({ fotoPerfil, estabelecimentoNome, onFotoPerfilChange, uploadingFoto }: ProfileSettingsProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { user } = useAuthStore();
   const [loading, setLoading] = useState(false);
 
@@ -113,20 +124,75 @@ export default function ProfileSettings() {
               textAlign: 'center',
             })}
           >
-            <Avatar
-              sx={{
-                width: 90,
-                height: 90,
-                mb: 2,
-                fontSize: '2rem',
-                fontWeight: 700,
-                color: 'white',
-                background: `linear-gradient(135deg, ${currentRole.color}, #9C27B0)`,
-                boxShadow: `0 8px 20px 0 ${currentRole.color}25`,
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/jpg,image/png,image/webp"
+              hidden
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                if (!['image/jpeg', 'image/jpg', 'image/png', 'image/webp'].includes(file.type)) {
+                  toast.error('Formato não suportado. Use JPG, JPEG, PNG ou WebP.');
+                  return;
+                }
+                onFotoPerfilChange?.(file);
+                e.target.value = '';
               }}
-            >
-              {user?.nome ? user.nome.charAt(0).toUpperCase() : <Person />}
-            </Avatar>
+            />
+            <Tooltip title={onFotoPerfilChange ? 'Clique para alterar a foto de perfil' : ''}>
+              <Badge
+                overlap="circular"
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                badgeContent={
+                  onFotoPerfilChange && (
+                    <Avatar
+                      sx={{
+                        width: 30,
+                        height: 30,
+                        bgcolor: 'primary.main',
+                        cursor: 'pointer',
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        fileInputRef.current?.click();
+                      }}
+                    >
+                      {uploadingFoto ? <CircularProgress size={16} sx={{ color: 'white' }} /> : <PhotoCamera sx={{ fontSize: 16 }} />}
+                    </Avatar>
+                  )
+                }
+              >
+                <Avatar
+                  onClick={() => {
+                    if (onFotoPerfilChange && !uploadingFoto) {
+                      fileInputRef.current?.click();
+                    }
+                  }}
+                  src={fotoPerfil || undefined}
+                  sx={{
+                    width: 90,
+                    height: 90,
+                    mb: 2,
+                    fontSize: '2rem',
+                    fontWeight: 700,
+                    color: 'white',
+                    cursor: onFotoPerfilChange ? 'pointer' : 'default',
+                    background: fotoPerfil ? undefined : `linear-gradient(135deg, ${currentRole.color}, #9C27B0)`,
+                    boxShadow: `0 8px 20px 0 ${currentRole.color}25`,
+                    transition: 'opacity 0.2s',
+                    '&:hover': onFotoPerfilChange ? { opacity: 0.85 } : undefined,
+                  }}
+                >
+                  {!fotoPerfil && (estabelecimentoNome
+                    ? estabelecimentoNome.charAt(0).toUpperCase()
+                    : user?.nome
+                      ? user.nome.charAt(0).toUpperCase()
+                      : <Person />
+                  )}
+                </Avatar>
+              </Badge>
+            </Tooltip>
 
             <Typography variant="h5" sx={{ fontWeight: 700, mb: 1, fontFamily: '"Outfit", sans-serif' }}>
               {user?.nome}

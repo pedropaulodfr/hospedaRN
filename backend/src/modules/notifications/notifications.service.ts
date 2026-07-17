@@ -29,7 +29,7 @@ export class NotificationsService {
   ) {
     this.transporter = nodemailer.createTransport({
       host: this.config.get('MAIL_HOST'),
-      port: 465,
+      port: this.config.get<number>('MAIL_PORT', 465),
       secure: true,
       auth: {
         user: this.config.get('MAIL_USER'),

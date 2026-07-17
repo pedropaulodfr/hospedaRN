@@ -56,6 +56,7 @@ export default function EstProfile() {
       estabelecimentoNome={establishment?.nome}
       onFotoPerfilChange={handleFotoPerfilChange}
       uploadingFoto={uploadingFoto}
+      allowEditContact
     />
   );
 }

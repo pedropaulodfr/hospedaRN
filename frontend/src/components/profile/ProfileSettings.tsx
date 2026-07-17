@@ -33,11 +33,12 @@ interface ProfileSettingsProps {
   estabelecimentoNome?: string;
   onFotoPerfilChange?: (file: File) => void;
   uploadingFoto?: boolean;
+  allowEditContact?: boolean;
 }
 
-export default function ProfileSettings({ fotoPerfil, estabelecimentoNome, onFotoPerfilChange, uploadingFoto }: ProfileSettingsProps) {
+export default function ProfileSettings({ fotoPerfil, estabelecimentoNome, onFotoPerfilChange, uploadingFoto, allowEditContact }: ProfileSettingsProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { user } = useAuthStore();
+  const { user, setUser } = useAuthStore();
   const [loading, setLoading] = useState(false);
 
   // Form states
@@ -49,6 +50,36 @@ export default function ProfileSettings({ fotoPerfil, estabelecimentoNome, onFot
   const [showSenhaAtual, setShowSenhaAtual] = useState(false);
   const [showNovaSenha, setShowNovaSenha] = useState(false);
   const [showConfirmarSenha, setShowConfirmarSenha] = useState(false);
+
+  // Contact editing states
+  const formatPhone = (value: string) => {
+    const digits = value.replace(/\D/g, '').slice(0, 11);
+    if (digits.length <= 2) return digits.length ? `(${digits}` : '';
+    if (digits.length <= 3) return `(${digits.slice(0, 2)}) ${digits[2]}`;
+    if (digits.length <= 7) return `(${digits.slice(0, 2)}) ${digits[2]} ${digits.slice(3)}`;
+    return `(${digits.slice(0, 2)}) ${digits[2]} ${digits.slice(3, 7)}-${digits.slice(7)}`;
+  };
+
+  const [editTelefone, setEditTelefone] = useState(formatPhone(user?.telefone || ''));
+  const [savingContact, setSavingContact] = useState(false);
+
+  const handleSaveContact = async () => {
+    if (!user) return;
+
+    try {
+      setSavingContact(true);
+      const raw = editTelefone.replace(/\D/g, '');
+      await usersApi.updateMe({ telefone: raw || undefined });
+      setUser({ ...user, telefone: raw || undefined });
+      toast.success('Contato atualizado com sucesso!');
+    } catch (error: any) {
+      console.error(error);
+      const msg = error.response?.data?.message || 'Erro ao atualizar contato.';
+      toast.error(msg);
+    } finally {
+      setSavingContact(false);
+    }
+  };
 
   // Role details configuration
   const roleConfig = {
@@ -216,8 +247,8 @@ export default function ProfileSettings({ fotoPerfil, estabelecimentoNome, onFot
                 <Avatar sx={(t) => ({ bgcolor: t.palette.mode === 'dark' ? 'rgba(38,198,218,0.15)' : 'rgba(0,151,167,0.06)', color: t.palette.mode === 'dark' ? '#26C6DA' : '#0097A7', width: 40, height: 40 })}>
                   <Email fontSize="small" />
                 </Avatar>
-                <Box sx={{ overflow: 'hidden' }}>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontWeight: 500 }}>
+                <Box sx={{ flex: 1, overflow: 'hidden' }}>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontWeight: 500, mb: 0.5 }}>
                     E-mail do Login
                   </Typography>
                   <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>
@@ -230,15 +261,48 @@ export default function ProfileSettings({ fotoPerfil, estabelecimentoNome, onFot
                 <Avatar sx={(t) => ({ bgcolor: t.palette.mode === 'dark' ? 'rgba(255,138,101,0.15)' : 'rgba(255,112,67,0.06)', color: t.palette.mode === 'dark' ? '#FF8A65' : '#FF7043', width: 40, height: 40 })}>
                   <Phone fontSize="small" />
                 </Avatar>
-                <Box>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontWeight: 500 }}>
+                <Box sx={{ flex: 1, overflow: 'hidden' }}>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontWeight: 500, mb: 0.5 }}>
                     Contato / Celular
                   </Typography>
-                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                    {user?.telefone || 'Não cadastrado'}
-                  </Typography>
+                  {allowEditContact ? (
+                    <TextField
+                      fullWidth
+                      size="small"
+                      value={editTelefone}
+                      onChange={(e) => setEditTelefone(formatPhone(e.target.value))}
+                      placeholder="(84) 9 9999-9999"
+                      disabled={savingContact}
+                      inputMode="numeric"
+                      slotProps={{ input: { sx: { fontSize: '0.875rem', fontWeight: 600 } } }}
+                    />
+                  ) : (
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                      {user?.telefone || 'Não cadastrado'}
+                    </Typography>
+                  )}
                 </Box>
               </Box>
+
+              {allowEditContact && (
+                <Button
+                  variant="contained"
+                  onClick={handleSaveContact}
+                  disabled={savingContact}
+                  fullWidth
+                  sx={{
+                    mt: 1,
+                    borderRadius: '10px',
+                    textTransform: 'none',
+                    fontWeight: 600,
+                    py: 1,
+                    background: 'linear-gradient(135deg, #0097A7, #00BCD4)',
+                    boxShadow: '0 4px 14px 0 rgba(0, 151, 167, 0.3)',
+                  }}
+                >
+                  {savingContact ? <CircularProgress size={20} sx={{ color: 'white' }} /> : 'Salvar Contato'}
+                </Button>
+              )}
             </Box>
           </Paper>
         </Grid>

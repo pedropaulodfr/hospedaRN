@@ -19,6 +19,9 @@ export class EmailWorker extends WorkerHost {
         user: config.get('MAIL_USER'),
         pass: config.get('MAIL_PASS'),
       },
+      connectionTimeout: 5000,
+      greetingTimeout: 5000,
+      socketTimeout: 10000,
     });
   }
 

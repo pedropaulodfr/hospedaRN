@@ -35,6 +35,9 @@ export class NotificationsService {
         user: this.config.get('MAIL_USER'),
         pass: this.config.get('MAIL_PASS'),
       },
+      connectionTimeout: 5000,
+      greetingTimeout: 5000,
+      socketTimeout: 10000,
     });
   }
 
@@ -175,37 +178,12 @@ export class NotificationsService {
     token: string;
     resetUrl: string;
   }) {
-    const html = `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <div style="background: linear-gradient(135deg, #0097A7, #00BCD4); padding: 30px; text-align: center;">
-          <h1 style="color: white; margin: 0;">🏖️ HospedaRN</h1>
-        </div>
-        <div style="padding: 30px; background: #f9f9f9;">
-          <h2>Recuperação de Senha</h2>
-          <p>Olá, <strong>${data.nome}</strong>!</p>
-          <p>Clique no botão abaixo para redefinir sua senha. O link expira em 2 horas.</p>
-          <div style="text-align: center; margin: 30px 0;">
-            <a href="${data.resetUrl}" style="background: #0097A7; color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; font-weight: bold;">
-              Redefinir Senha
-            </a>
-          </div>
-          <p style="color: #999; font-size: 12px;">Se você não solicitou esta recuperação, ignore este e-mail.</p>
-        </div>
-      </div>
-    `;
-
-    try {
-      await this.transporter.sendMail({
-        from: this.config.get('MAIL_FROM', '"HospedaRN" <noreply@hospedarn.com.br>'),
-        to: data.email,
-        subject: 'Recuperação de senha — HospedaRN',
-        html,
-      });
-      this.logger.log(`E-mail de recuperação enviado (síncrono) para ${data.email}`);
-    } catch (error) {
-      this.logger.error(`Erro ao enviar e-mail para ${data.email}:`, error);
-      throw error;
-    }
+    await this.addToQueue('forgot-password', {
+      to: data.email,
+      subject: 'Recuperação de senha — HospedaRN',
+      template: 'forgot-password',
+      context: data,
+    } as EmailJobData);
   }
 
 }

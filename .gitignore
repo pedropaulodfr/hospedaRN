@@ -3,6 +3,8 @@ node_modules/
 
 # Environment files (contain sensitive credentials)
 .env
+backend/.env
+frontend/.env
 
 # Build output
 dist/

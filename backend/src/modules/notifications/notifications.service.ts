@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import * as nodemailer from 'nodemailer';
 import { ConfigService } from '@nestjs/config';
 
 export interface EmailJobData {
@@ -20,25 +19,30 @@ export interface WhatsAppJobData {
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
-  private transporter: nodemailer.Transporter;
 
   constructor(
     @InjectQueue('email') private emailQueue: Queue,
     @InjectQueue('whatsapp') private whatsappQueue: Queue,
     private config: ConfigService,
-  ) {
-    this.transporter = nodemailer.createTransport({
-      host: this.config.get('MAIL_HOST'),
-      port: this.config.get<number>('MAIL_PORT', 465),
-      secure: true,
-      auth: {
-        user: this.config.get('MAIL_USER'),
-        pass: this.config.get('MAIL_PASS'),
+  ) {}
+
+  private async sendViaResend(to: string, subject: string, html: string) {
+    const apiKey = this.config.get<string>('RESEND_API_KEY');
+    const from = this.config.get('MAIL_FROM', '"HospedaRN" <noreply@hospedarn.com.br>');
+
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
       },
-      connectionTimeout: 5000,
-      greetingTimeout: 5000,
-      socketTimeout: 10000,
+      body: JSON.stringify({ from, to: [to], subject, html }),
     });
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Resend error ${res.status}: ${err}`);
+    }
   }
 
   private async addToQueue(template: string, data: EmailJobData) {
@@ -47,12 +51,7 @@ export class NotificationsService {
     } catch (error) {
       this.logger.warn(`Fila indisponível, enviando e-mail diretamente para ${data.to}`);
       const html = this.renderFallbackTemplate(template, data.context);
-      await this.transporter.sendMail({
-        from: this.config.get('MAIL_FROM', '"HospedaRN" <noreply@hospedarn.com.br>'),
-        to: data.to,
-        subject: data.subject,
-        html,
-      });
+      await this.sendViaResend(data.to, data.subject, html);
     }
   }
 

@@ -11,7 +11,7 @@
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
-    "start:prod": "npx prisma generate && npx prisma db push --accept-data-loss && node --dns-result-order=ipv4first dist/main",
+    "start:prod": "npx prisma generate && npx prisma db push --accept-data-loss && node dist/main",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest",
     "test:watch": "jest --watch",
@@ -42,7 +42,7 @@
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",
     "multer": "^2.1.1",
-    "nodemailer": "^8.0.10",
+
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "passport-local": "^1.0.0",
@@ -63,7 +63,7 @@
     "@types/jest": "^30.0.0",
     "@types/multer": "^2.1.0",
     "@types/node": "^24.0.0",
-    "@types/nodemailer": "^8.0.0",
+
     "@types/passport-jwt": "^4.0.1",
     "@types/passport-local": "^1.0.38",
     "@types/supertest": "^7.0.0",

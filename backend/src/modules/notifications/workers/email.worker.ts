@@ -1,28 +1,14 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { Logger } from '@nestjs/common';
-import * as nodemailer from 'nodemailer';
 import { ConfigService } from '@nestjs/config';
 
 @Processor('email')
 export class EmailWorker extends WorkerHost {
   private readonly logger = new Logger(EmailWorker.name);
-  private transporter: nodemailer.Transporter;
 
   constructor(private config: ConfigService) {
     super();
-    this.transporter = nodemailer.createTransport({
-      host: config.get('MAIL_HOST'),
-      port: config.get<number>('MAIL_PORT', 465),
-      secure: true,
-      auth: {
-        user: config.get('MAIL_USER'),
-        pass: config.get('MAIL_PASS'),
-      },
-      connectionTimeout: 5000,
-      greetingTimeout: 5000,
-      socketTimeout: 10000,
-    });
   }
 
   async process(job: Job) {
@@ -30,13 +16,22 @@ export class EmailWorker extends WorkerHost {
 
     try {
       const html = this.renderTemplate(template, context);
+      const apiKey = this.config.get<string>('RESEND_API_KEY');
+      const from = this.config.get('MAIL_FROM', '"HospedaRN" <noreply@hospedarn.com.br>');
 
-      await this.transporter.sendMail({
-        from: this.config.get('MAIL_FROM', '"HospedaRN" <noreply@hospedarn.com.br>'),
-        to,
-        subject,
-        html,
+      const res = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ from, to: [to], subject, html }),
       });
+
+      if (!res.ok) {
+        const err = await res.text();
+        throw new Error(`Resend error ${res.status}: ${err}`);
+      }
 
       this.logger.log(`Email enviado para ${to}: ${subject}`);
     } catch (error) {

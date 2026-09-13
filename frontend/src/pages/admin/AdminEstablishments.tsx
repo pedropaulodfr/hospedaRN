@@ -61,6 +61,7 @@ interface Establishment {
   latitude?: number;
   longitude?: number;
   ativo: boolean;
+  modoPagamento?: 'PADRAO' | 'MERCADO_PAGO';
   cidade: { id: string; nome: string };
   proprietario: { id: string; nome: string; email: string };
   comodidades: Array<{ comodidade: { id: string; nome: string } }>;
@@ -106,6 +107,7 @@ export default function AdminEstablishments() {
   const [longitude, setLongitude] = useState('');
   const [cidadeId, setCidadeId] = useState('');
   const [selectedAmenityIds, setSelectedAmenityIds] = useState<string[]>([]);
+  const [modoPagamento, setModoPagamento] = useState<'PADRAO' | 'MERCADO_PAGO'>('PADRAO');
   const [fotoPerfil, setFotoPerfil] = useState('');
   const [uploadingImage, setUploadingImage] = useState(false);
 
@@ -164,6 +166,7 @@ export default function AdminEstablishments() {
     setLongitude('');
     setCidadeId('');
     setSelectedAmenityIds([]);
+    setModoPagamento('PADRAO');
     setFotoPerfil('');
     setOpenAddDialog(true);
   };
@@ -182,6 +185,7 @@ export default function AdminEstablishments() {
     setLongitude(est.longitude ? est.longitude.toString() : '');
     setCidadeId(est.cidade?.id || '');
     setSelectedAmenityIds(est.comodidades.map(c => c.comodidade.id));
+    setModoPagamento(est.modoPagamento || 'PADRAO');
     setFotoPerfil(est.fotoPerfil || '');
     setOpenAddDialog(true);
   };
@@ -228,6 +232,7 @@ export default function AdminEstablishments() {
       longitude: longitude ? parseFloat(longitude) : undefined,
       cidadeId,
       amenityIds: selectedAmenityIds,
+      modoPagamento,
       fotoPerfil: fotoPerfil || undefined,
     };
 
@@ -364,6 +369,7 @@ export default function AdminEstablishments() {
                   <TableCell sx={{ fontWeight: 600 }}>Cidade</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>E-mail de Contato</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Proprietário</TableCell>
+                  <TableCell align="center" sx={{ fontWeight: 600 }}>Pagamento</TableCell>
                   <TableCell align="center" sx={{ fontWeight: 600 }}>Ativo</TableCell>
                   <TableCell align="center" sx={{ fontWeight: 600 }}>Ações</TableCell>
                 </TableRow>
@@ -406,6 +412,15 @@ export default function AdminEstablishments() {
                             Sem proprietário
                           </Typography>
                         )}
+                      </TableCell>
+                      <TableCell align="center">
+                        <Chip
+                          size="small"
+                          label={est.modoPagamento === 'MERCADO_PAGO' ? 'Mercado Pago' : 'Padrão'}
+                          color={est.modoPagamento === 'MERCADO_PAGO' ? 'primary' : 'default'}
+                          variant={est.modoPagamento === 'MERCADO_PAGO' ? 'filled' : 'outlined'}
+                          sx={{ fontWeight: 600 }}
+                        />
                       </TableCell>
                       <TableCell align="center">
                         <Switch
@@ -612,6 +627,24 @@ export default function AdminEstablishments() {
               />
             </Grid>
 
+            {/* Modo de Pagamento */}
+            <Grid size={{ xs: 12 }}>
+              <FormControl fullWidth>
+                <InputLabel>Modo de Pagamento</InputLabel>
+                <Select
+                  value={modoPagamento}
+                  onChange={(e) => setModoPagamento(e.target.value as 'PADRAO' | 'MERCADO_PAGO')}
+                  label="Modo de Pagamento"
+                >
+                  <MenuItem value="PADRAO">Padrão (comprovante manual)</MenuItem>
+                  <MenuItem value="MERCADO_PAGO">Mercado Pago (reconhecimento automático)</MenuItem>
+                </Select>
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
+                  Em "Mercado Pago" o hóspede paga via PIX, boleto ou cartão e a reserva é finalizada automaticamente após a aprovação.
+                </Typography>
+              </FormControl>
+            </Grid>
+
             {/* Amenities Select */}
             <Grid size={{ xs: 12 }}>
               <FormControl fullWidth>
@@ -692,6 +725,16 @@ export default function AdminEstablishments() {
               <Box>
                 <Typography variant="caption" color="text.secondary">Cidade Vinculada</Typography>
                 <Typography variant="body1">{selectedEst.cidade?.nome}</Typography>
+              </Box>
+
+              <Box>
+                <Typography variant="caption" color="text.secondary">Modo de Pagamento</Typography>
+                <Chip
+                  size="small"
+                  label={selectedEst.modoPagamento === 'MERCADO_PAGO' ? 'Mercado Pago' : 'Padrão (comprovante)'}
+                  color={selectedEst.modoPagamento === 'MERCADO_PAGO' ? 'primary' : 'default'}
+                  sx={{ mt: 0.5 }}
+                />
               </Box>
 
               {selectedEst.descricao && (

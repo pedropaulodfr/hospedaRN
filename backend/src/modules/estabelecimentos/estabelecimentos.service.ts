@@ -29,6 +29,7 @@ const ESTABLISHMENT_SELECT = {
   notaMedia: true,
   totalAvaliacoes: true,
   fotoPerfil: true,
+  modoPagamento: true,
   criadoEm: true,
   cidade: { select: { id: true, nome: true, estado: true } },
   proprietario: { select: { id: true, nome: true, email: true } },
@@ -243,6 +244,12 @@ export class EstablishmentsService {
 
     if (estabelecimento.proprietario.id !== userId && userRole !== 'ADMIN') {
       throw new ForbiddenException('Sem permissão para editar este estabelecimento');
+    }
+
+    if (dto.modoPagamento !== undefined && userRole !== 'ADMIN') {
+      throw new ForbiddenException(
+        'Apenas ADMIN pode alterar o modo de pagamento do estabelecimento',
+      );
     }
 
     const { amenityIds, ...data } = dto;

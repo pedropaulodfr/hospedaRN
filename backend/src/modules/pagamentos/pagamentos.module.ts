@@ -5,5 +5,6 @@ import { PaymentsController } from './pagamentos.controller';
 import { PaymentsService } from './pagamentos.service';
 import { UploadsModule } from '../uploads/uploads.module';
 import { NotificationsModule } from '../notifications/notifications.module';
-@Module({ imports: [MulterModule.register({ storage: memoryStorage() }), UploadsModule, NotificationsModule], controllers: [PaymentsController], providers: [PaymentsService], exports: [PaymentsService] })
+import { MercadoPagoModule } from '../mercado-pago/mercado-pago.module';
+@Module({ imports: [MulterModule.register({ storage: memoryStorage() }), UploadsModule, NotificationsModule, MercadoPagoModule], controllers: [PaymentsController], providers: [PaymentsService], exports: [PaymentsService] })
 export class PaymentsModule {}

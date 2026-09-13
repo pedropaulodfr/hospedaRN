@@ -171,6 +171,22 @@ export class NotificationsService {
     } as EmailJobData);
   }
 
+  async sendPaymentMercadoPagoConfirmed(data: {
+    email: string;
+    nome: string;
+    codigoReserva: string;
+    estabelecimento: string;
+    checkIn: string;
+    checkOut: string;
+  }) {
+    await this.addToQueue('pagamento-mp-confirmed', {
+      to: data.email,
+      subject: `Pagamento confirmado — Reserva ${data.codigoReserva}`,
+      template: 'pagamento-mp-confirmed',
+      context: data,
+    } as EmailJobData);
+  }
+
   async sendForgotPassword(data: {
     email: string;
     nome: string;

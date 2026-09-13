@@ -171,6 +171,9 @@ export const paymentsApi = {
   create: (data: any) => api.post('/pagamentos', data),
   getByReservation: (id: string) => api.get(`/pagamentos/reserva/${id}`),
   generatePix: (reservationId: string) => api.get(`/pagamentos/pix/${reservationId}`),
+  createCheckoutMP: (reservationId: string, metodo: 'PIX' | 'BOLETO' | 'CARTAO') =>
+    api.post(`/pagamentos/reserva/${reservationId}/checkout-mp`, { metodo }),
+  getCheckout: (reservationId: string) => api.get(`/pagamentos/checkout/${reservationId}`),
   confirm: (id: string) => api.post(`/pagamentos/${id}/confirm`),
   uploadComprovante: (id: string, file: File) => {
     const formData = new FormData();

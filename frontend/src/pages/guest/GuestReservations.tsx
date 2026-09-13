@@ -91,6 +91,21 @@ interface Establishment {
   endereco?: string;
   cidade: Cidade;
   fotos: Foto[];
+  modoPagamento?: 'PADRAO' | 'MERCADO_PAGO';
+}
+
+interface MpCheckoutData {
+  qrCodeBase64?: string;
+  pixCopyPaste?: string;
+  boletoBarcode?: string;
+  boletoUrl?: string;
+  initPoint?: string;
+}
+
+interface MercadoPagoCheckout {
+  paymentId?: string;
+  metodo?: 'PIX' | 'BOLETO' | 'CARTAO';
+  checkout?: MpCheckoutData;
 }
 
 interface Payment {
@@ -101,6 +116,7 @@ interface Payment {
   comprovanteUrl?: string;
   valor: number | string;
   status: 'PENDENTE' | 'CONFIRMADO' | 'ESTORNADO' | 'CANCELADO';
+  dadosPagamento?: MpCheckoutData;
   criadoEm: string;
 }
 
@@ -166,6 +182,10 @@ export default function GuestReservations() {
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'PIX' | 'CARTAO' | 'BOLETO'>('PIX');
   const [pixData, setPixData] = useState<PixData | null>(null);
   const [loadingPix, setLoadingPix] = useState(false);
+
+  // Mercado Pago checkout states
+  const [mpCheckout, setMpCheckout] = useState<MercadoPagoCheckout | null>(null);
+  const [loadingMpCheckout, setLoadingMpCheckout] = useState(false);
 
   // Credit card form mock states
   const [cardName, setCardName] = useState('');
@@ -253,6 +273,7 @@ export default function GuestReservations() {
     setCardCvv('');
     setDetailsOpen(true);
     setPixData(null);
+    setMpCheckout(null);
     setSelectedPaymentMethod(reservation.pagamento?.metodo || 'PIX');
 
     // Fetch refreshed payment details
@@ -263,7 +284,18 @@ export default function GuestReservations() {
       if (pData) {
         setDetailedPayment(pData);
         setSelectedPaymentMethod(pData.metodo);
-        if (pData.metodo === 'PIX') {
+        if (reservation.estabelecimento?.modoPagamento === 'MERCADO_PAGO') {
+          if (pData.dadosPagamento) {
+            setMpCheckout({
+              paymentId: pData.codigoTransacao,
+              metodo: pData.metodo,
+              checkout: pData.dadosPagamento,
+            });
+          }
+          if (reservation.status === 'CONFIRMADA' || reservation.status === 'AGUARDANDO_PAGAMENTO') {
+            createMpCheckout(pData.metodo, false, reservation.id);
+          }
+        } else if (pData.metodo === 'PIX') {
           loadPixDetails(reservation.id);
         }
       }
@@ -292,8 +324,62 @@ export default function GuestReservations() {
 
   const handlePaymentMethodChange = (method: 'PIX' | 'CARTAO' | 'BOLETO') => {
     setSelectedPaymentMethod(method);
+    if (selectedReservation?.estabelecimento?.modoPagamento === 'MERCADO_PAGO') {
+      createMpCheckout(method, false, selectedReservation.id);
+      return;
+    }
     if (method === 'PIX' && !pixData && selectedReservation) {
       loadPixDetails(selectedReservation.id);
+    }
+  };
+
+  // Create / retrieve a Mercado Pago checkout for the reservation
+  const createMpCheckout = async (
+    metodo: 'PIX' | 'BOLETO' | 'CARTAO',
+    openLink = false,
+    reservationId?: string
+  ): Promise<MercadoPagoCheckout | null> => {
+    const resId = reservationId || selectedReservation?.id;
+    if (!resId) return null;
+    try {
+      setLoadingMpCheckout(true);
+      setSelectedPaymentMethod(metodo);
+      const res = await paymentsApi.createCheckoutMP(resId, metodo);
+      const data = res.data?.data || res.data;
+      if (!data?.checkout) {
+        toast.error('Não foi possível gerar o pagamento. Tente novamente.');
+        return null;
+      }
+      const checkout = data.checkout;
+      setMpCheckout({
+        paymentId: data.paymentId || data.codigoTransacao,
+        metodo,
+        checkout,
+      });
+      if (metodo === 'CARTAO' && openLink && checkout.initPoint) {
+        window.open(checkout.initPoint, '_blank', 'noopener,noreferrer');
+      }
+      return { paymentId: data.paymentId || data.codigoTransacao, metodo, checkout };
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.response?.data?.message || 'Erro ao gerar o pagamento via Mercado Pago.');
+      return null;
+    } finally {
+      setLoadingMpCheckout(false);
+    }
+  };
+
+  // Open Card (Checkout Pro) in a new tab
+  const handleOpenMpCard = async () => {
+    if (!selectedReservation) return;
+    let checkout = mpCheckout;
+    if (!checkout?.checkout?.initPoint) {
+      checkout = await createMpCheckout('CARTAO', false, selectedReservation.id);
+    }
+    if (checkout?.checkout?.initPoint) {
+      window.open(checkout.checkout.initPoint, '_blank', 'noopener,noreferrer');
+    } else {
+      toast.error('Não foi possível abrir o checkout. Tente novamente.');
     }
   };
 
@@ -317,17 +403,21 @@ export default function GuestReservations() {
 
   // Copy Pix copy-paste key
   const handleCopyPix = () => {
-    if (pixData?.pixCopyPaste) {
-      navigator.clipboard.writeText(pixData.pixCopyPaste);
+    const code = mpCheckout?.checkout?.pixCopyPaste || pixData?.pixCopyPaste;
+    if (code) {
+      navigator.clipboard.writeText(code);
       toast.success('Código PIX Copia e Cola copiado para a área de transferência!');
     }
   };
 
   // Copy Boleto barcode
   const handleCopyBoleto = () => {
-    const code = '34191.79001 01043.513184 91020.150008 7 98760000015000';
-    navigator.clipboard.writeText(code);
-    toast.success('Código de barras do boleto copiado!');
+    const code =
+      mpCheckout?.checkout?.boletoBarcode || '34191.79001 01043.513184 91020.150008 7 98760000015000';
+    if (code) {
+      navigator.clipboard.writeText(code);
+      toast.success('Código de barras do boleto copiado!');
+    }
   };
 
   // Simulated Credit Card Payment Action
@@ -1038,7 +1128,9 @@ export default function GuestReservations() {
                         // Render payment simulator options
                         <Box>
                           <Alert severity="warning" icon={<WarningAmber />} sx={{ borderRadius: '8px', mb: 3 }}>
-                            Aguardando seu pagamento para consolidar a hospedagem. Escolha a forma de pagamento abaixo.
+                            {selectedReservation.estabelecimento?.modoPagamento === 'MERCADO_PAGO'
+                              ? 'Aguardando seu pagamento via Mercado Pago para consolidar a hospedagem.'
+                              : 'Aguardando seu pagamento para consolidar a hospedagem. Escolha a forma de pagamento abaixo.'}
                           </Alert>
 
                           {/* Payment tabs */}
@@ -1072,7 +1164,54 @@ export default function GuestReservations() {
                           {/* PIX Method */}
                           {!paymentLoading && selectedPaymentMethod === 'PIX' && (
                             <Box>
-                              {loadingPix ? (
+                              {selectedReservation.estabelecimento?.modoPagamento === 'MERCADO_PAGO' ? (
+                                loadingMpCheckout && !mpCheckout?.checkout?.qrCodeBase64 ? (
+                                  <Box sx={{ py: 3 }}>
+                                    <LinearProgress />
+                                  </Box>
+                                ) : mpCheckout?.checkout?.qrCodeBase64 ? (
+                                  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 3 }}>
+                                    <Box
+                                      component="img"
+                                      src={
+                                        mpCheckout.checkout.qrCodeBase64.startsWith('data:')
+                                          ? mpCheckout.checkout.qrCodeBase64
+                                          : `data:image/png;base64,${mpCheckout.checkout.qrCodeBase64}`
+                                      }
+                                      alt="QR Code Pix Mercado Pago"
+                                      sx={{
+                                        width: 180,
+                                        height: 180,
+                                        border: '1px solid',
+                                        borderColor: 'divider',
+                                        borderRadius: '12px',
+                                        p: 1,
+                                        mb: 2,
+                                      }}
+                                    />
+                                    <Typography variant="caption" color="text.secondary" sx={{ mb: 2, textAlign: 'center' }}>
+                                      Escaneie o QR Code com o app do seu banco ou use o código Pix Copia e Cola abaixo.
+                                    </Typography>
+                                    <Button
+                                      variant="outlined"
+                                      size="small"
+                                      startIcon={<ContentCopy />}
+                                      onClick={handleCopyPix}
+                                      fullWidth
+                                      sx={{ borderRadius: '8px' }}
+                                    >
+                                      Copiar Código Pix Copia e Cola
+                                    </Button>
+                                    <Typography variant="caption" color="text.secondary" sx={{ mt: 1.5, textAlign: 'center' }}>
+                                      O pagamento será confirmado automaticamente assim que for compensado.
+                                    </Typography>
+                                  </Box>
+                                ) : (
+                                  <Box sx={{ py: 3 }}>
+                                    <LinearProgress />
+                                  </Box>
+                                )
+                              ) : loadingPix ? (
                                 <Box sx={{ py: 3 }}>
                                   <LinearProgress />
                                 </Box>
@@ -1115,42 +1254,131 @@ export default function GuestReservations() {
                           {/* BOLETO Method */}
                           {!paymentLoading && selectedPaymentMethod === 'BOLETO' && (
                             <Box sx={{ mb: 3 }}>
-                              <Paper sx={(t) => ({ p: 2.5, bgcolor: t.palette.mode === 'dark' ? 'rgba(255,255,255,0.06)' : '#F8FAFC', border: `1px dashed ${t.palette.divider}`, borderRadius: '8px', mb: 2 })}>
-                                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
-                                  Linha Digitável do Boleto
-                                </Typography>
-                                <Typography
-                                  variant="body2"
-                                  sx={{
-                                    fontFamily: 'monospace',
-                                    fontWeight: 700,
-                                    letterSpacing: '0.05em',
-                                    my: 1.5,
-                                    wordBreak: 'break-all',
-                                  }}
-                                >
-                                  34191.79001 01043.513184 91020.150008 7 98760000015000
-                                </Typography>
-                                <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                                  Vencimento: em até 3 dias úteis.
-                                </Typography>
-                              </Paper>
-                              <Button
-                                variant="outlined"
-                                size="small"
-                                startIcon={<ContentCopy />}
-                                onClick={handleCopyBoleto}
-                                fullWidth
-                                sx={{ borderRadius: '8px' }}
-                              >
-                                Copiar Linha Digitável
-                              </Button>
+                              {selectedReservation.estabelecimento?.modoPagamento === 'MERCADO_PAGO' ? (
+                                <>
+                                  <Paper sx={(t) => ({ p: 2.5, bgcolor: t.palette.mode === 'dark' ? 'rgba(255,255,255,0.06)' : '#F8FAFC', border: `1px dashed ${t.palette.divider}`, borderRadius: '8px', mb: 2 })}>
+                                    <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+                                      Linha Digitável do Boleto
+                                    </Typography>
+                                    {mpCheckout?.checkout?.boletoBarcode ? (
+                                      <Typography
+                                        variant="body2"
+                                        sx={{
+                                          fontFamily: 'monospace',
+                                          fontWeight: 700,
+                                          letterSpacing: '0.05em',
+                                          my: 1.5,
+                                          wordBreak: 'break-all',
+                                        }}
+                                      >
+                                        {mpCheckout.checkout.boletoBarcode}
+                                      </Typography>
+                                    ) : loadingMpCheckout ? (
+                                      <Box sx={{ py: 2 }}>
+                                        <LinearProgress />
+                                      </Box>
+                                    ) : (
+                                      <Typography variant="body2" color="text.secondary" sx={{ my: 1.5 }}>
+                                        Aguardando a geração do boleto...
+                                      </Typography>
+                                    )}
+                                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                                      Vencimento: em até 3 dias úteis.
+                                    </Typography>
+                                  </Paper>
+                                  {mpCheckout?.checkout?.boletoUrl && (
+                                    <Button
+                                      component="a"
+                                      href={mpCheckout.checkout.boletoUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      variant="contained"
+                                      color="primary"
+                                      size="small"
+                                      startIcon={<OpenInNew />}
+                                      fullWidth
+                                      sx={{ borderRadius: '8px', mb: 1.5 }}
+                                    >
+                                      Abrir Boleto no Banco
+                                    </Button>
+                                  )}
+                                  <Button
+                                    variant="outlined"
+                                    size="small"
+                                    startIcon={<ContentCopy />}
+                                    onClick={handleCopyBoleto}
+                                    fullWidth
+                                    sx={{ borderRadius: '8px' }}
+                                  >
+                                    Copiar Linha Digitável
+                                  </Button>
+                                </>
+                              ) : (
+                                <>
+                                  <Paper sx={(t) => ({ p: 2.5, bgcolor: t.palette.mode === 'dark' ? 'rgba(255,255,255,0.06)' : '#F8FAFC', border: `1px dashed ${t.palette.divider}`, borderRadius: '8px', mb: 2 })}>
+                                    <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+                                      Linha Digitável do Boleto
+                                    </Typography>
+                                    <Typography
+                                      variant="body2"
+                                      sx={{
+                                        fontFamily: 'monospace',
+                                        fontWeight: 700,
+                                        letterSpacing: '0.05em',
+                                        my: 1.5,
+                                        wordBreak: 'break-all',
+                                      }}
+                                    >
+                                      34191.79001 01043.513184 91020.150008 7 98760000015000
+                                    </Typography>
+                                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                                      Vencimento: em até 3 dias úteis.
+                                    </Typography>
+                                  </Paper>
+                                  <Button
+                                    variant="outlined"
+                                    size="small"
+                                    startIcon={<ContentCopy />}
+                                    onClick={handleCopyBoleto}
+                                    fullWidth
+                                    sx={{ borderRadius: '8px' }}
+                                  >
+                                    Copiar Linha Digitável
+                                  </Button>
+                                </>
+                              )}
                             </Box>
                           )}
 
                           {/* CREDIT CARD Method */}
                           {!paymentLoading && selectedPaymentMethod === 'CARTAO' && (
                             <Box sx={{ mb: 3 }}>
+                              {selectedReservation.estabelecimento?.modoPagamento === 'MERCADO_PAGO' ? (
+                                <>
+                                  <Alert severity="info" icon={<Payment />} sx={{ borderRadius: '8px', mb: 2 }}>
+                                    Você será redirecionado para o ambiente seguro do Mercado Pago para pagar com cartão de crédito.
+                                  </Alert>
+                                  <Button
+                                    variant="contained"
+                                    color="primary"
+                                    fullWidth
+                                    disabled={loadingMpCheckout}
+                                    onClick={handleOpenMpCard}
+                                    startIcon={!loadingMpCheckout ? <Payment /> : undefined}
+                                    sx={{ borderRadius: '8px', py: 1 }}
+                                  >
+                                    {loadingMpCheckout ? (
+                                      <CircularProgress size={20} color="inherit" />
+                                    ) : (
+                                      'Pagar com Cartão via Mercado Pago'
+                                    )}
+                                  </Button>
+                                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1.5, textAlign: 'center', display: 'block' }}>
+                                    Depois de pagar, volte a esta página para ver o status atualizado.
+                                  </Typography>
+                                </>
+                              ) : (
+                              <>
                               <Grid container spacing={1.5} sx={{ mb: 2 }}>
                                 <Grid size={{ xs: 12 }}>
                                   <TextField
@@ -1210,10 +1438,13 @@ export default function GuestReservations() {
                                   'Simular Pagamento com Cartão'
                                 )}
                               </Button>
+                              </>
+                              )}
                             </Box>
                           )}
 
-                          {(selectedPaymentMethod === 'PIX' || selectedPaymentMethod === 'BOLETO') && (
+                          {selectedReservation.estabelecimento?.modoPagamento !== 'MERCADO_PAGO' &&
+                            (selectedPaymentMethod === 'PIX' || selectedPaymentMethod === 'BOLETO') && (
                             <>
                               <Divider sx={{ my: 3 }} />
 

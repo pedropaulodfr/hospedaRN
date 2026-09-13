@@ -25,6 +25,7 @@ const RESERVATION_INCLUDE = {
       endereco: true,
       emailContato: true,
       website: true,
+      modoPagamento: true,
       proprietario: { select: { id: true, nome: true, email: true } },
       cidade: { select: { id: true, nome: true, estado: true } },
       fotos: { select: { id: true, url: true, isCapa: true } },

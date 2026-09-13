@@ -87,6 +87,7 @@ export default function EstablishmentDetailPage() {
   const [successDialogOpen, setSuccessDialogOpen] = useState(false);
   const [createdReservation, setCreatedReservation] = useState<any>(null);
   const [pixData, setPixData] = useState<any>(null);
+  const [mpCheckout, setMpCheckout] = useState<any>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Card details states (for CC simulation)
@@ -245,16 +246,29 @@ export default function EstablishmentDetailPage() {
       const reserva = resReserva.data.data;
       setCreatedReservation(reserva);
 
-      // 2. Create Payment choice
-      await paymentsApi.create({
-        reservaId: reserva.id,
-        metodo: paymentMethod,
-      });
+      const isMpMode = reserva.estabelecimento?.modoPagamento === 'MERCADO_PAGO';
 
-      // 3. Generate PIX if chosen
-      if (paymentMethod === 'PIX') {
-        const resPix = await paymentsApi.generatePix(reserva.id);
-        setPixData(resPix.data.data);
+      if (isMpMode) {
+        // Mercado Pago: payment object + checkout via plataforma
+        try {
+          const resMp = await paymentsApi.createCheckoutMP(reserva.id, paymentMethod);
+          const data = resMp.data?.data || resMp.data;
+          if (data?.checkout) setMpCheckout(data);
+        } catch (err) {
+          console.error('Falha ao gerar checkout Mercado Pago', err);
+        }
+      } else {
+        // 2. Create Payment choice
+        await paymentsApi.create({
+          reservaId: reserva.id,
+          metodo: paymentMethod,
+        });
+
+        // 3. Generate PIX if chosen
+        if (paymentMethod === 'PIX') {
+          const resPix = await paymentsApi.generatePix(reserva.id);
+          setPixData(resPix.data.data);
+        }
       }
 
       setSuccessDialogOpen(true);
@@ -287,6 +301,15 @@ export default function EstablishmentDetailPage() {
     setCardSimulated(true);
     toast.success('Transação com cartão de crédito simulada com sucesso!');
   };
+
+  const handleOpenMpCheckout = () => {
+    const initPoint = mpCheckout?.checkout?.initPoint;
+    if (initPoint) {
+      window.open(initPoint, '_blank', 'noopener,noreferrer');
+    }
+  };
+
+  const isMpEstabelecimento = establishment?.modoPagamento === 'MERCADO_PAGO';
 
   return (
     <Box sx={{ bgcolor: 'background.default', minHeight: '100vh', pt: { xs: 8, md: 10 } }}>
@@ -1024,7 +1047,7 @@ export default function EstablishmentDetailPage() {
             </Alert>
 
             {/* Simulated Payment details depending on selected method */}
-            {paymentMethod === 'PIX' && pixData && (
+            {!isMpEstabelecimento && paymentMethod === 'PIX' && pixData && (
               <Box sx={{ p: 2, borderRadius: 3, border: '1px solid', borderColor: 'primary.light', bgcolor: 'rgba(0,151,167,0.02)' }}>
                 <Typography variant="subtitle2" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                   <AccountBalanceWallet sx={{ color: 'primary.main' }} /> Pagamento PIX (Simulado)
@@ -1067,7 +1090,7 @@ export default function EstablishmentDetailPage() {
               </Box>
             )}
 
-            {paymentMethod === 'BOLETO' && (
+            {!isMpEstabelecimento && paymentMethod === 'BOLETO' && (
               <Box sx={{ p: 2, borderRadius: 3, border: '1px solid', borderColor: 'warning.light', bgcolor: 'rgba(255,112,67,0.02)' }}>
                 <Typography variant="subtitle2" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                   <Receipt sx={{ color: 'warning.main' }} /> Boleto Bancário (Simulado)
@@ -1101,7 +1124,7 @@ export default function EstablishmentDetailPage() {
               </Box>
             )}
 
-            {paymentMethod === 'CARTAO' && (
+            {!isMpEstabelecimento && paymentMethod === 'CARTAO' && (
               <Box sx={(t) => ({ p: 2, borderRadius: 3, border: '1px solid', borderColor: 'divider', bgcolor: t.palette.mode === 'dark' ? '#1e293b' : 'grey.50' })}>
                 <Typography variant="subtitle2" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
                   <CreditCard sx={{ color: 'text.secondary' }} /> Simulação de Cartão de Crédito
@@ -1163,6 +1186,110 @@ export default function EstablishmentDetailPage() {
                   </Box>
                 )}
               </Box>
+            )}
+
+            {isMpEstabelecimento && mpCheckout && (
+              <Box sx={{ p: 2, borderRadius: 3, border: '1px solid', borderColor: 'primary.light', bgcolor: 'rgba(0,151,167,0.03)' }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                  <AccountBalanceWallet sx={{ color: 'primary.main' }} /> Pagamento via Mercado Pago
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  O pagamento é confirmado automaticamente pela plataforma assim que compensado — não é necessário enviar comprovante.
+                </Typography>
+
+                {paymentMethod === 'PIX' && (
+                  <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <Box sx={{ bgcolor: 'white', p: 1, border: '1px solid rgba(0,0,0,0.08)', borderRadius: 2 }}>
+                      <img
+                        src={mpCheckout.checkout.qrCodeBase64?.startsWith('data:') ? mpCheckout.checkout.qrCodeBase64 : `data:image/png;base64,${mpCheckout.checkout.qrCodeBase64}`}
+                        alt="PIX QR Code"
+                        style={{ width: 140, height: 140 }}
+                      />
+                    </Box>
+                    <Box sx={{ flex: 1, minWidth: 200 }}>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                        PIX COPIA E COLA
+                      </Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <TextField
+                          size="small"
+                          value={mpCheckout.checkout.pixCopyPaste}
+                          slotProps={{
+                            input: {
+                              readOnly: true,
+                              sx: { fontFamily: 'monospace', fontSize: '0.75rem', bgcolor: 'grey.50' },
+                            },
+                          }}
+                          fullWidth
+                        />
+                        <Button
+                          variant="contained"
+                          size="small"
+                          onClick={() => handleCopyText(mpCheckout.checkout.pixCopyPaste, 'Pix Copia e Cola')}
+                          sx={{ py: 1 }}
+                        >
+                          Copiar
+                        </Button>
+                      </Box>
+                    </Box>
+                  </Box>
+                )}
+
+                {paymentMethod === 'BOLETO' && (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                    <TextField
+                      size="small"
+                      value={mpCheckout.checkout.boletoBarcode}
+                      slotProps={{
+                        input: {
+                          readOnly: true,
+                          sx: { fontFamily: 'monospace', fontSize: '0.8rem', bgcolor: 'grey.50' },
+                        },
+                      }}
+                      fullWidth
+                    />
+                    <Button
+                      variant="contained"
+                      size="small"
+                      color="warning"
+                      onClick={() => handleCopyText(mpCheckout.checkout.boletoBarcode, 'Código de barras')}
+                      sx={{ py: 1 }}
+                    >
+                      Copiar
+                    </Button>
+                    {mpCheckout.checkout.boletoUrl && (
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        color="warning"
+                        onClick={() => window.open(mpCheckout.checkout.boletoUrl, '_blank', 'noopener,noreferrer')}
+                        sx={{ py: 1 }}
+                      >
+                        Abrir Boleto no Banco
+                      </Button>
+                    )}
+                  </Box>
+                )}
+
+                {paymentMethod === 'CARTAO' && (
+                  <Alert severity="info" sx={{ borderRadius: 2 }}>
+                    Clique no botão abaixo para concluir o pagamento com cartão com segurança no ambiente do Mercado Pago.
+                  </Alert>
+                )}
+              </Box>
+            )}
+
+            {isMpEstabelecimento && paymentMethod === 'CARTAO' && mpCheckout?.checkout?.initPoint && (
+              <Button
+                variant="contained"
+                color="secondary"
+                size="large"
+                fullWidth
+                onClick={handleOpenMpCheckout}
+                sx={{ py: 1.5, borderRadius: 3, fontWeight: 700 }}
+              >
+                Pagar com Cartão via Mercado Pago
+              </Button>
             )}
 
             <Button

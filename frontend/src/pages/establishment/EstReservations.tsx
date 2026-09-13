@@ -30,6 +30,7 @@ import {
   Tabs,
   Avatar,
   Divider,
+  Alert,
 } from '@mui/material';
 import {
   Check,
@@ -57,6 +58,7 @@ interface Establishment {
   id: string;
   nome: string;
   proprietarioId: string;
+  modoPagamento?: 'PADRAO' | 'MERCADO_PAGO';
 }
 
 interface Hospede {
@@ -389,6 +391,8 @@ export default function EstReservations() {
   // Dashboard stats computed from /reports/reservas/by-status (independent of active tab)
   const { pendingCount, awaitingPaymentCount, finalizedCount, totalRevenue } = stats;
 
+  const isMpEstabelecimento = selectedEstablishment?.modoPagamento === 'MERCADO_PAGO';
+
   return (
     <Box sx={{ p: 4, maxWidth: 1200, margin: '0 auto' }}>
       {/* Header Section */}
@@ -678,7 +682,7 @@ export default function EstReservations() {
 
                           {(reserva.status === 'CONFIRMADA' || reserva.status === 'AGUARDANDO_PAGAMENTO') && (
                             <>
-                              {reserva.pagamento?.comprovanteUrl && (
+                              {reserva.pagamento?.comprovanteUrl && !isMpEstabelecimento && (
                                 <Tooltip title="Confirmar Pagamento e Finalizar">
                                   <IconButton
                                     onClick={() => handleOpenDetails(reserva)}
@@ -938,7 +942,13 @@ export default function EstReservations() {
                         />
                       </Box>
 
-                      {detailedPayment.comprovanteUrl && (
+                      {isMpEstabelecimento && (
+                        <Alert severity="info" sx={{ borderRadius: '8px', py: 0.5 }}>
+                          Confirmação automática via Mercado Pago — não é necessário anexar comprovante.
+                        </Alert>
+                      )}
+
+                      {!isMpEstabelecimento && detailedPayment.comprovanteUrl && (
                         <Box sx={{ mt: 1.5, borderTop: '1px solid', borderColor: 'divider', pt: 1.5 }}>
                           <Typography variant="body2" sx={{ fontWeight: 600, mb: 1 }}>
                             Comprovante Anexado:
@@ -1017,6 +1027,7 @@ export default function EstReservations() {
 
           {selectedReservation && 
             (selectedReservation.status === 'CONFIRMADA' || selectedReservation.status === 'AGUARDANDO_PAGAMENTO') && 
+            !isMpEstabelecimento &&
             detailedPayment?.comprovanteUrl && (
               <Button
                 variant="contained"

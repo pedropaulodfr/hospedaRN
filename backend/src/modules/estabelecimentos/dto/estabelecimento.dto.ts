@@ -1,8 +1,9 @@
 import {
-  IsString, IsOptional, IsBoolean, IsNumber, IsArray, IsUUID,
+  IsString, IsOptional, IsBoolean, IsNumber, IsArray, IsUUID, IsEnum,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type, Transform } from 'class-transformer';
+import { ModoPagamentoEstabelecimento } from '@prisma/client';
 
 export class CreateEstablishmentDto {
   @ApiProperty({ example: 'Pousada do Sol' })
@@ -65,6 +66,14 @@ export class CreateEstablishmentDto {
   @IsArray()
   @IsUUID('4', { each: true })
   amenityIds?: string[];
+
+  @ApiPropertyOptional({
+    enum: ModoPagamentoEstabelecimento,
+    description: '[ADMIN] Modo de pagamento do estabelecimento',
+  })
+  @IsOptional()
+  @IsEnum(ModoPagamentoEstabelecimento)
+  modoPagamento?: ModoPagamentoEstabelecimento;
 }
 
 export class UpdateEstablishmentDto {
@@ -130,6 +139,14 @@ export class UpdateEstablishmentDto {
   @IsArray()
   @IsUUID('4', { each: true })
   amenityIds?: string[];
+
+  @ApiPropertyOptional({
+    enum: ModoPagamentoEstabelecimento,
+    description: '[ADMIN] Modo de pagamento do estabelecimento',
+  })
+  @IsOptional()
+  @IsEnum(ModoPagamentoEstabelecimento)
+  modoPagamento?: ModoPagamentoEstabelecimento;
 }
 
 export class BuscaEstabelecimentosDto {

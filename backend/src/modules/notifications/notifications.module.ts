@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { NotificationsService } from './notifications.service';
+import { MailService } from './mail.service';
 import { EmailWorker } from './workers/email.worker';
 
 @Module({
@@ -26,7 +27,7 @@ import { EmailWorker } from './workers/email.worker';
       { name: 'whatsapp' },
     ),
   ],
-  providers: [NotificationsService, EmailWorker],
-  exports: [NotificationsService],
+  providers: [NotificationsService, MailService, EmailWorker],
+  exports: [NotificationsService, MailService],
 })
 export class NotificationsModule {}

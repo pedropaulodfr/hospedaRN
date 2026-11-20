@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { ConfigService } from '@nestjs/config';
+import { MailService } from './mail.service';
 
 export interface EmailJobData {
   to: string;
@@ -24,50 +25,34 @@ export class NotificationsService {
     @InjectQueue('email') private emailQueue: Queue,
     @InjectQueue('whatsapp') private whatsappQueue: Queue,
     private config: ConfigService,
+    private mailService: MailService,
   ) {}
 
-  private async sendViaResend(to: string, subject: string, html: string) {
-    const apiKey = this.config.get<string>('RESEND_API_KEY');
-    const from = this.config.get('MAIL_FROM', '"HospedaRN" <noreply@hospedarn.com.br>');
-
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ from, to: [to], subject, html }),
-    });
-
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`Resend error ${res.status}: ${err}`);
-    }
-  }
-
   private async addToQueue(template: string, data: EmailJobData) {
+    // Em serverless não existe worker consumindo a fila: com Gmail SMTP o envio
+    // é sempre direto. Com Resend tentamos a fila (quando há Redis) e caímos no
+    // envio direto se ela estiver indisponível.
+    if (this.mailService.providerName !== 'resend') {
+      await this.mailService.send({
+        to: data.to,
+        subject: data.subject,
+        template,
+        context: data.context,
+      });
+      return;
+    }
+
     try {
       await this.emailQueue.add(template, data);
-    } catch (error) {
+    } catch {
       this.logger.warn(`Fila indisponível, enviando e-mail diretamente para ${data.to}`);
-      const html = this.renderFallbackTemplate(template, data.context);
-      await this.sendViaResend(data.to, data.subject, html);
+      await this.mailService.send({
+        to: data.to,
+        subject: data.subject,
+        template,
+        context: data.context,
+      });
     }
-  }
-
-  private renderFallbackTemplate(template: string, ctx: Record<string, any>): string {
-    const lines = Object.entries(ctx).map(([k, v]) => `<p><strong>${k}:</strong> ${v}</p>`).join('');
-    return `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <div style="background: linear-gradient(135deg, #0097A7, #00BCD4); padding: 30px; text-align: center;">
-          <h1 style="color: white; margin: 0;">🏖️ HospedaRN</h1>
-        </div>
-        <div style="padding: 30px; background: #f9f9f9;">${lines}</div>
-        <div style="padding: 15px; background: #0097A7; text-align: center;">
-          <p style="color: white; margin: 0; font-size: 12px;">HospedaRN — Hospedagens no Rio Grande do Norte</p>
-        </div>
-      </div>
-    `;
   }
 
   async sendReservationPendingForEstablishment(data: {

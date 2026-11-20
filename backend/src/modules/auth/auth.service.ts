@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   UnauthorizedException,
   ConflictException,
   BadRequestException,
@@ -20,6 +21,8 @@ import {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
@@ -170,12 +173,23 @@ export class AuthService {
     const frontendUrl = this.config.get<string>('FRONTEND_URL', 'http://localhost:5173');
     const resetUrl = `${frontendUrl}/nova-senha?token=${token}`;
 
-    await this.notificationsService.sendForgotPassword({
-      email: usuario.email,
-      nome: usuario.nome,
-      token,
-      resetUrl,
-    });
+    try {
+      await this.notificationsService.sendForgotPassword({
+        email: usuario.email,
+        nome: usuario.nome,
+        token,
+        resetUrl,
+      });
+    } catch (error) {
+      // Falha de e-mail não pode transformar o pedido em 500: além de quebrar a
+      // recuperação de senha, um 500 só para e-mail cadastrado vaza a existência
+      // da conta. O token já foi gravado e continua válido.
+      this.logger.error(
+        `Falha ao enviar e-mail de recuperação para ${usuario.email}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
 
     return {
       message: 'Se o e-mail estiver cadastrado, você receberá as instruções',

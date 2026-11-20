@@ -5,6 +5,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
+import { ConfigService } from '@nestjs/config';
 import {
   CreateEstablishmentDto,
   UpdateEstablishmentDto,
@@ -52,6 +53,7 @@ export class EstablishmentsService {
   constructor(
     private prisma: PrismaService,
     private notificationsService: NotificationsService,
+    private config: ConfigService,
   ) {}
 
   async create(dto: CreateEstablishmentDto) {
@@ -87,7 +89,8 @@ export class EstablishmentsService {
 
       // 2. Disparar e-mail de ativação/recuperação
       try {
-        const resetUrl = `http://localhost:5173/redefinir-senha?token=${resetToken}`;
+        const frontendUrl = this.config.get<string>('FRONTEND_URL', 'http://localhost:5173');
+        const resetUrl = `${frontendUrl}/nova-senha?token=${resetToken}`;
         await this.notificationsService.sendForgotPassword({
           email: proprietario.email,
           nome: proprietario.nome,

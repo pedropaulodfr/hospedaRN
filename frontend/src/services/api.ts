@@ -7,7 +7,26 @@ declare global {
   }
 }
 
-const API_BASE_URL = window.__ENV__?.VITE_API_URL || import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+const LOCAL_API_BASE_URL = 'http://localhost:3000/api';
+const PRODUCTION_API_BASE_URL = 'https://hospeda-rn-api.vercel.app/api';
+
+function resolveApiBaseUrl(): string {
+  const runtimeUrl = window.__ENV__?.VITE_API_URL || import.meta.env.VITE_API_URL;
+  if (runtimeUrl) {
+    return runtimeUrl.replace(/\/+$/, '');
+  }
+
+  // Em produção o front (hospeda-rn.vercel.app) e a API (hospeda-rn-api.vercel.app)
+  // são projetos Vercel separados; sem VITE_API_URL o fallback precisa apontar
+  // para a API publicada, nunca para localhost.
+  if (typeof window !== 'undefined' && /\.vercel\.app$/i.test(window.location.hostname)) {
+    return PRODUCTION_API_BASE_URL;
+  }
+
+  return LOCAL_API_BASE_URL;
+}
+
+const API_BASE_URL = resolveApiBaseUrl();
 
 export const api = axios.create({
   baseURL: API_BASE_URL,

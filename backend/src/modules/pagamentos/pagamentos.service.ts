@@ -38,12 +38,12 @@ export class PaymentsService {
       },
     });
 
-    this.notifications.sendPaymentUploaded({
+    await this.notifications.sendPaymentUploaded({
       email: pagamento.reserva.hospede.email,
       nome: pagamento.reserva.hospede.nome,
       codigoReserva: pagamento.reserva.codigoReserva,
       estabelecimento: pagamento.reserva.estabelecimento.nome,
-    }).catch(() => {});
+    });
 
     return pagamento;
   }
@@ -66,14 +66,14 @@ export class PaymentsService {
       data: { status: 'CONFIRMADO' },
     });
 
-    this.notifications.sendPaymentConfirmed({
+    await this.notifications.sendPaymentConfirmed({
       email: reserva.hospede.email,
       nome: reserva.hospede.nome,
       codigoReserva: reserva.codigoReserva,
       estabelecimento: reserva.estabelecimento.nome,
       checkIn: reserva.checkIn.toISOString().split('T')[0],
       checkOut: reserva.checkOut.toISOString().split('T')[0],
-    }).catch(() => {});
+    });
 
     return updated;
   }

@@ -29,29 +29,42 @@ export class NotificationsService {
   ) {}
 
   private async addToQueue(template: string, data: EmailJobData) {
-    // Em serverless não existe worker consumindo a fila: com Gmail SMTP o envio
-    // é sempre direto. Com Resend tentamos a fila (quando há Redis) e caímos no
-    // envio direto se ela estiver indisponível.
+    const payload = {
+      to: data.to,
+      subject: data.subject,
+      template,
+      context: data.context,
+    };
+
+    // Notificação é efeito colateral: nenhuma falha de e-mail pode derrubar o
+    // fluxo de negócio (reserva, pagamento). Em serverless o envio é direto,
+    // porque não existe worker consumindo a fila.
     if (this.mailService.providerName !== 'resend') {
-      await this.mailService.send({
-        to: data.to,
-        subject: data.subject,
-        template,
-        context: data.context,
-      });
+      try {
+        await this.mailService.send(payload);
+      } catch (error) {
+        this.logger.error(
+          `Falha ao enviar e-mail (${template}) para ${data.to}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
       return;
     }
 
     try {
       await this.emailQueue.add(template, data);
     } catch {
-      this.logger.warn(`Fila indisponível, enviando e-mail diretamente para ${data.to}`);
-      await this.mailService.send({
-        to: data.to,
-        subject: data.subject,
-        template,
-        context: data.context,
-      });
+      try {
+        this.logger.warn(`Fila indisponível, enviando e-mail diretamente para ${data.to}`);
+        await this.mailService.send(payload);
+      } catch (error) {
+        this.logger.error(
+          `Falha ao enviar e-mail (${template}) para ${data.to}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
     }
   }
 

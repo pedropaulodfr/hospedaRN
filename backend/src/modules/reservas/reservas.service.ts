@@ -2,6 +2,7 @@ import {
   Injectable, NotFoundException, BadRequestException, ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
+import { ConfigService } from '@nestjs/config';
 import { CreateReservationDto, CancelReservationDto } from './dto/reserva.dto';
 import { RoomsService } from '../quartos/quartos.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -41,6 +42,7 @@ export class ReservationsService {
     private prisma: PrismaService,
     private roomsService: RoomsService,
     private notifications: NotificationsService,
+    private config: ConfigService,
   ) {}
 
   async create(dto: CreateReservationDto, hospedeId: string) {
@@ -75,31 +77,41 @@ export class ReservationsService {
       include: RESERVATION_INCLUDE,
     });
 
-    this.notifications.sendReservationCreated({
-      email: reserva.hospede.email,
-      nome: reserva.hospede.nome,
-      codigoReserva: reserva.codigoReserva,
-      estabelecimento: reserva.estabelecimento.nome,
-      checkIn: reserva.checkIn.toISOString().split('T')[0],
-      checkOut: reserva.checkOut.toISOString().split('T')[0],
-      valorTotal: Number(reserva.valorTotal),
-    }).catch(() => {});
-
     const estabEmail = reserva.estabelecimento.emailContato || reserva.estabelecimento.proprietario.email;
-    if (estabEmail) {
-      this.notifications.sendReservationPendingForEstablishment({
-        email: estabEmail,
-        estabelecimento: reserva.estabelecimento.nome,
-        hospedeNome: reserva.hospede.nome,
+
+    const notificacoes: Array<Promise<void>> = [
+      this.notifications.sendReservationCreated({
+        email: reserva.hospede.email,
+        nome: reserva.hospede.nome,
         codigoReserva: reserva.codigoReserva,
+        estabelecimento: reserva.estabelecimento.nome,
         checkIn: reserva.checkIn.toISOString().split('T')[0],
         checkOut: reserva.checkOut.toISOString().split('T')[0],
-        quarto: reserva.quarto.nome,
-        adultos: reserva.adultos,
-        criancas: reserva.criancas,
         valorTotal: Number(reserva.valorTotal),
-      }).catch(() => {});
+      }),
+    ];
+
+    if (estabEmail) {
+      notificacoes.push(
+        this.notifications.sendReservationPendingForEstablishment({
+          email: estabEmail,
+          estabelecimento: reserva.estabelecimento.nome,
+          hospedeNome: reserva.hospede.nome,
+          codigoReserva: reserva.codigoReserva,
+          checkIn: reserva.checkIn.toISOString().split('T')[0],
+          checkOut: reserva.checkOut.toISOString().split('T')[0],
+          quarto: reserva.quarto.nome,
+          adultos: reserva.adultos,
+          criancas: reserva.criancas,
+          valorTotal: Number(reserva.valorTotal),
+        }),
+      );
     }
+
+    // Aguarda o envio: em serverless o processo pode congelar logo após a
+    // resposta, e um envio "fire-and-forget" simplesmente não acontece.
+    // NotificationsService não rejeita, então nada aqui derruba a reserva.
+    await Promise.allSettled(notificacoes);
 
     return reserva;
   }
@@ -164,7 +176,7 @@ export class ReservationsService {
       include: RESERVATION_INCLUDE,
     });
 
-    this.notifications.sendReservationConfirmed({
+    await this.notifications.sendReservationConfirmed({
       email: updatedReserva.hospede.email,
       nome: updatedReserva.hospede.nome,
       codigoReserva: updatedReserva.codigoReserva,
@@ -172,9 +184,9 @@ export class ReservationsService {
       checkIn: updatedReserva.checkIn.toISOString().split('T')[0],
       checkOut: updatedReserva.checkOut.toISOString().split('T')[0],
       valorTotal: Number(updatedReserva.valorTotal),
-      pixKey: 'hospedarn@hospedarn.com.br',
-      pixType: 'E-mail',
-    }).catch(() => {});
+      pixKey: this.config.get<string>('PIX_KEY') || 'a combinar com o estabelecimento',
+      pixType: this.config.get<string>('PIX_TYPE') || 'A combinar',
+    });
 
     return updatedReserva;
   }
@@ -202,13 +214,13 @@ export class ReservationsService {
       include: RESERVATION_INCLUDE,
     });
 
-    this.notifications.sendReservationCancelled({
+    await this.notifications.sendReservationCancelled({
       email: cancelledReserva.hospede.email,
       nome: cancelledReserva.hospede.nome,
       codigoReserva: cancelledReserva.codigoReserva,
       estabelecimento: cancelledReserva.estabelecimento.nome,
       motivo: cancelledReserva.cancelamentoMotivo || undefined,
-    }).catch(() => {});
+    });
 
     return cancelledReserva;
   }

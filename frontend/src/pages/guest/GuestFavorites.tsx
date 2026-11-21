@@ -1,21 +1,20 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Box,
   Typography,
-  Paper,
   Button,
   Grid,
-  CircularProgress,
   Card,
   CardContent,
-  CardMedia,
   CardActions,
   IconButton,
   Chip,
-  Avatar,
   Tooltip,
+  CircularProgress,
 } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import {
   Favorite,
   FavoriteBorder,
@@ -24,9 +23,17 @@ import {
   ArrowForward,
   Hotel,
   Refresh,
-  Home,
 } from '@mui/icons-material';
+import {
+  CardGridSkeleton,
+  EmptyState,
+  ErrorState,
+  PageContainer,
+  PageHeader,
+  MediaFallback,
+} from '../../components/common';
 import { favoritesApi } from '../../services/api';
+import { FAVORITES_KEY } from '../../hooks/useFavorites';
 import toast from 'react-hot-toast';
 
 interface FavoriteItem {
@@ -51,17 +58,22 @@ interface FavoriteItem {
 
 export default function GuestFavorites() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const [favorites, setFavorites] = useState<FavoriteItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
 
   const loadFavorites = async () => {
     try {
+      setLoading(true);
+      setError(false);
       const res = await favoritesApi.getAll();
       setFavorites(res.data.data || res.data || []);
     } catch (err) {
       console.error(err);
+      setError(true);
       toast.error('Erro ao carregar favoritos');
     } finally {
       setLoading(false);
@@ -77,6 +89,8 @@ export default function GuestFavorites() {
     try {
       await favoritesApi.toggle(fav.estabelecimentoId);
       setFavorites((prev) => prev.filter((f) => f.id !== fav.id));
+      // Mantém os corações das outras telas em sincronia com esta remoção.
+      void queryClient.invalidateQueries({ queryKey: FAVORITES_KEY });
       toast.success('Removido dos favoritos');
     } catch (err) {
       console.error(err);
@@ -86,208 +100,217 @@ export default function GuestFavorites() {
     }
   };
 
-  const getPhotoUrl = (est: FavoriteItem['estabelecimento']) =>
-    est.fotoPerfil || 'https://placehold.co/400x250/0097A7/FFFFFF?text=HospedaRN';
-
-  if (loading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '80vh' }}>
-        <CircularProgress />
-      </Box>
-    );
-  }
+  const countLabel =
+    favorites.length === 1
+      ? '1 estabelecimento salvo'
+      : `${favorites.length} estabelecimentos salvos`;
 
   return (
-    <Box sx={{ p: 4, maxWidth: 1200, margin: '0 auto' }}>
-      {/* Header */}
-      <Box sx={{ mb: 4, display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 2 }}>
-        <Box>
-          <Typography variant="h4" sx={{ fontFamily: '"Outfit", sans-serif', fontWeight: 800, mb: 0.5 }}>
-            Meus Favoritos
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            {favorites.length === 1
-              ? '1 estabelecimento salvo'
-              : `${favorites.length} estabelecimentos salvos`}
-          </Typography>
-        </Box>
-        <Button
-          variant="outlined"
-          startIcon={<Refresh />}
-          onClick={loadFavorites}
-          sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 600 }}
-        >
-          Atualizar
-        </Button>
-      </Box>
-
-      {favorites.length === 0 ? (
-        <Paper
-          sx={{
-            p: 8,
-            borderRadius: '20px',
-            textAlign: 'center',
-            border: '1px dashed',
-            borderColor: 'divider',
-          }}
-        >
-          <FavoriteBorder sx={{ fontSize: 56, color: 'text.secondary', mb: 2 }} />
-          <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
-            Nenhum favorito ainda
-          </Typography>
-          <Typography color="text.secondary" sx={{ mb: 3, maxWidth: 400, mx: 'auto' }}>
-            Salve seus estabelecimentos preferidos para encontrá-los rapidamente quando quiser fazer uma reserva.
-          </Typography>
+    <PageContainer maxWidth="content">
+      <PageHeader
+        icon={<FavoriteBorder />}
+        overline="Área do hóspede"
+        title="Meus favoritos"
+        subtitle={
+          loading || error
+            ? 'Suas hospedagens preferidas para reservar depois.'
+            : `${countLabel} para reservar depois.`
+        }
+        actions={
           <Button
-            variant="contained"
-            startIcon={<Hotel />}
-            onClick={() => navigate('/busca')}
-            sx={{
-              borderRadius: '10px',
-              textTransform: 'none',
-              fontWeight: 600,
-              background: 'linear-gradient(135deg, #0097A7, #00BCD4)',
-            }}
+            variant="outlined"
+            startIcon={<Refresh />}
+            onClick={loadFavorites}
+            disabled={loading}
           >
-            Explorar Hospedagens
+            Atualizar
           </Button>
-        </Paper>
+        }
+      />
+
+      {loading ? (
+        <CardGridSkeleton count={6} height={292} />
+      ) : error ? (
+        <ErrorState
+          title="Não foi possível carregar seus favoritos"
+          description="Verifique sua conexão e tente novamente."
+          onRetry={loadFavorites}
+        />
+      ) : favorites.length === 0 ? (
+        <EmptyState
+          icon={<FavoriteBorder />}
+          title="Nenhum favorito ainda"
+          description="Salve os estabelecimentos que você gostou para encontrá-los rapidamente quando quiser reservar."
+          action={
+            <Button
+              variant="contained"
+              startIcon={<Hotel />}
+              onClick={() => navigate('/busca')}
+            >
+              Explorar hospedagens
+            </Button>
+          }
+        />
       ) : (
         <Grid container spacing={3}>
-          {favorites.map((fav) => (
-            <Grid key={fav.id} size={{ xs: 12, sm: 6, md: 4 }}>
-              <Card
-                sx={{
-                  borderRadius: '16px',
-                  border: '1px solid',
-                  borderColor: 'divider',
-                  boxShadow: '0 2px 12px rgba(0,0,0,0.04)',
-                  overflow: 'hidden',
-                  height: '100%',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  transition: 'transform 0.2s ease, box-shadow 0.2s ease',
-                  '&:hover': {
-                    transform: 'translateY(-3px)',
-                    boxShadow: '0 8px 30px rgba(0,0,0,0.08)',
-                  },
-                }}
-              >
-                <Box sx={{ position: 'relative' }}>
-                  <CardMedia
-                    component="img"
-                    height="160"
-                    image={getPhotoUrl(fav.estabelecimento)}
-                    alt={fav.estabelecimento.nome}
-                    sx={{ cursor: 'pointer' }}
-                    onClick={() => navigate(`/hospedagem/${fav.estabelecimento.id}`)}
-                  />
-                  <Chip
-                    label={`${fav.estabelecimento.cidade.nome}, ${fav.estabelecimento.cidade.estado}`}
-                    icon={<Place sx={{ fontSize: '12px !important' }} />}
-                    size="small"
-                    sx={{
-                      position: 'absolute',
-                      top: 12,
-                      left: 12,
-                      bgcolor: 'rgba(0,0,0,0.65)',
-                      color: 'white',
-                      backdropFilter: 'blur(4px)',
-                      fontWeight: 600,
-                      fontSize: '0.7rem',
-                      '& .MuiChip-icon': { color: 'primary.light', fontSize: '12px' },
-                    }}
-                  />
-                  <Tooltip title="Remover dos favoritos">
-                    <IconButton
-                      onClick={() => handleRemove(fav)}
-                      disabled={removingId === fav.id}
+          {favorites.map((fav) => {
+            const est = fav.estabelecimento;
+            const removendo = removingId === fav.id;
+            const nota = Number(est.notaMedia) || 0;
+
+            return (
+              <Grid key={fav.id} size={{ xs: 12, sm: 6, lg: 4 }}>
+                <Card
+                  sx={{
+                    height: '100%',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    overflow: 'hidden',
+                    transition: 'border-color 180ms, box-shadow 180ms',
+                    '&:hover': {
+                      borderColor: 'primary.main',
+                      boxShadow: 2,
+                    },
+                  }}
+                >
+                  <Box
+                    sx={(t) => ({
+                      position: 'relative',
+                      width: '100%',
+                      aspectRatio: '16 / 9',
+                      flexShrink: 0,
+                      background: est.fotoPerfil
+                        ? undefined
+                        : `linear-gradient(135deg, ${alpha(t.palette.primary.main, 0.9)} 0%, ${alpha(
+                            t.palette.secondary.main,
+                            0.78,
+                          )} 100%)`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: 'primary.contrastText',
+                    })}
+                  >
+                    {est.fotoPerfil ? (
+                      <Box
+                        component="img"
+                        src={est.fotoPerfil}
+                        alt={`Foto de ${est.nome}`}
+                        loading="lazy"
+                        onClick={() => navigate(`/hospedagem/${est.id}`)}
+                        sx={{
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'cover',
+                          display: 'block',
+                          cursor: 'pointer',
+                        }}
+                      />
+                    ) : (
+                      <MediaFallback variant="establishment" label={est.nome} />
+                    )}
+
+                    <Chip
+                      size="small"
+                      icon={<Place sx={{ fontSize: 14 }} />}
+                      label={`${est.cidade.nome}, ${est.cidade.estado}`}
                       sx={{
                         position: 'absolute',
-                        top: 8,
-                        right: 8,
-                        bgcolor: 'rgba(255,255,255,0.9)',
-                        backdropFilter: 'blur(4px)',
-                        '&:hover': { bgcolor: 'rgba(255,255,255,1)' },
+                        top: 12,
+                        left: 12,
+                        maxWidth: 'calc(100% - 64px)',
+                        bgcolor: 'background.paper',
+                        color: 'text.primary',
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        backdropFilter: 'blur(6px)',
+                        '& .MuiChip-icon': { color: 'primary.main' },
                       }}
-                      size="small"
-                    >
-                      {removingId === fav.id ? (
-                        <CircularProgress size={18} />
-                      ) : (
-                        <Favorite sx={{ fontSize: 20, color: '#EF4444' }} />
-                      )}
-                    </IconButton>
-                  </Tooltip>
-                </Box>
+                    />
 
-                <CardContent
-                  sx={{
-                    flexGrow: 1,
-                    p: 2.5,
-                    cursor: 'pointer',
-                    '&:last-child': { pb: 1 },
-                  }}
-                  onClick={() => navigate(`/hospedagem/${fav.estabelecimento.id}`)}
-                >
-                  <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 0.5 }}>
-                    {fav.estabelecimento.nome}
-                  </Typography>
+                    <Tooltip title="Remover dos favoritos">
+                      <IconButton
+                        size="small"
+                        onClick={() => handleRemove(fav)}
+                        disabled={removendo}
+                        aria-label={`Remover ${est.nome} dos favoritos`}
+                        sx={{
+                          position: 'absolute',
+                          top: 8,
+                          right: 8,
+                          bgcolor: 'background.paper',
+                          border: '1px solid',
+                          borderColor: 'divider',
+                          color: 'error.main',
+                          '&:hover': { bgcolor: 'background.paper', color: 'error.dark' },
+                        }}
+                      >
+                        {removendo ? (
+                          <CircularProgress size={18} color="inherit" />
+                        ) : (
+                          <Favorite fontSize="small" />
+                        )}
+                      </IconButton>
+                    </Tooltip>
+                  </Box>
 
-                  {fav.estabelecimento.descricao && (
+                  <CardContent sx={{ flexGrow: 1, p: 2.5 }}>
                     <Typography
-                      variant="body2"
-                      color="text.secondary"
-                      sx={{
-                        mb: 1.5,
-                        display: '-webkit-box',
-                        WebkitLineClamp: 2,
-                        WebkitBoxOrient: 'vertical',
-                        overflow: 'hidden',
-                        fontSize: '0.8rem',
-                      }}
+                      variant="subtitle1"
+                      component="h2"
+                      sx={{ fontWeight: 700, lineHeight: 1.3, mb: 0.5 }}
                     >
-                      {fav.estabelecimento.descricao}
+                      {est.nome}
                     </Typography>
-                  )}
 
-                  {fav.estabelecimento.notaMedia && Number(fav.estabelecimento.notaMedia) > 0 && (
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                      <Star sx={{ fontSize: 16, color: '#F59E0B' }} />
-                      <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                        {Number(fav.estabelecimento.notaMedia).toFixed(1)}
+                    {est.descricao && (
+                      <Typography
+                        variant="body2"
+                        color="textSecondary"
+                        sx={{
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                          overflow: 'hidden',
+                          mb: nota > 0 ? 1.5 : 0,
+                        }}
+                      >
+                        {est.descricao}
                       </Typography>
-                      {fav.estabelecimento.totalAvaliacoes !== undefined && (
-                        <Typography variant="caption" color="text.secondary">
-                          ({fav.estabelecimento.totalAvaliacoes} avaliaç{ fav.estabelecimento.totalAvaliacoes === 1 ? 'ão' : 'ões'})
-                        </Typography>
-                      )}
-                    </Box>
-                  )}
-                </CardContent>
+                    )}
 
-                <CardActions sx={{ px: 2.5, pb: 2, pt: 0 }}>
-                  <Button
-                    variant="contained"
-                    fullWidth
-                    size="small"
-                    endIcon={<ArrowForward />}
-                    onClick={() => navigate(`/hospedagem/${fav.estabelecimento.id}`)}
-                    sx={{
-                      borderRadius: '8px',
-                      textTransform: 'none',
-                      fontWeight: 600,
-                      background: 'linear-gradient(135deg, #0097A7, #00BCD4)',
-                    }}
-                  >
-                    Ver detalhes
-                  </Button>
-                </CardActions>
-              </Card>
-            </Grid>
-          ))}
+                    {nota > 0 && (
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        <Star aria-hidden sx={{ fontSize: 16, color: 'warning.main' }} />
+                        <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                          {nota.toFixed(1)}
+                        </Typography>
+                        {est.totalAvaliacoes !== undefined && (
+                          <Typography variant="caption" color="textSecondary">
+                            ({est.totalAvaliacoes} avaliaç
+                            {est.totalAvaliacoes === 1 ? 'ão' : 'ões'})
+                          </Typography>
+                        )}
+                      </Box>
+                    )}
+                  </CardContent>
+
+                  <CardActions sx={{ px: 2.5, pb: 2.5, pt: 0 }}>
+                    <Button
+                      variant="outlined"
+                      fullWidth
+                      endIcon={<ArrowForward />}
+                      onClick={() => navigate(`/hospedagem/${est.id}`)}
+                    >
+                      Ver detalhes
+                    </Button>
+                  </CardActions>
+                </Card>
+              </Grid>
+            );
+          })}
         </Grid>
       )}
-    </Box>
+    </PageContainer>
   );
 }

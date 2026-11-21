@@ -1,29 +1,46 @@
 import { useEffect, useState } from 'react';
 import {
+  Avatar,
   Box,
-  Typography,
-  Paper,
   Button,
+  CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Divider,
+  IconButton,
+  Stack,
+  Switch,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-  IconButton,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  DialogContentText,
   TextField,
-  Switch,
-  CircularProgress,
   Tooltip,
-  Avatar,
-  Stack,
+  Typography,
 } from '@mui/material';
-import { Add, Edit, Delete, LocationCity, WarningAmber } from '@mui/icons-material';
+import { alpha } from '@mui/material/styles';
+import { Add, Delete, Edit, LocationCity, PhotoCamera } from '@mui/icons-material';
+import {
+  ConfirmDialog,
+  DataToolbar,
+  DataToolbarGroup,
+  EmptySearchIcon,
+  EmptyState,
+  ErrorState,
+  FormGrid,
+  FormSection,
+  FormSpan,
+  PageContainer,
+  PageHeader,
+  SearchField,
+  SectionCard,
+  StatusChip,
+  TableSkeleton,
+} from '../../components/common';
 import { citiesApi, uploadsApi } from '../../services/api';
 import toast from 'react-hot-toast';
 
@@ -46,9 +63,18 @@ const getPhotoUrl = (filename?: string) => {
   return `https://hospedarn-bucket.s3.us-east-2.amazonaws.com/cidades/${filename}`;
 };
 
+const coordinates = (city: City) => {
+  const lat = Number(city.latitude);
+  const lng = Number(city.longitude);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return 'Coordenadas não informadas';
+  return `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+};
+
 export default function AdminCities() {
   const [cities, setCities] = useState<City[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [search, setSearch] = useState('');
   const [openDialog, setOpenDialog] = useState(false);
   const [selectedCity, setSelectedCity] = useState<City | null>(null);
 
@@ -70,10 +96,12 @@ export default function AdminCities() {
   const fetchCities = async () => {
     try {
       setLoading(true);
+      setError(false);
       const res = await citiesApi.getAll();
       setCities(res.data.data || []);
-    } catch (error) {
-      console.error(error);
+    } catch (err) {
+      console.error(err);
+      setError(true);
       toast.error('Erro ao carregar cidades');
     } finally {
       setLoading(false);
@@ -88,7 +116,7 @@ export default function AdminCities() {
     setSelectedCity(null);
     setNome('');
     setEstado('RN');
-    setLatitude('-5.7945'); // Default Natal coordinates
+    setLatitude('-5.7945'); // Coordenadas padrão de Natal/RN
     setLongitude('-35.2110');
     setDescricao('');
     setFotoPerfil('');
@@ -117,8 +145,8 @@ export default function AdminCities() {
       const filename = s3Key.split('/').pop() || '';
       setFotoPerfil(filename);
       toast.success('Foto da cidade enviada com sucesso!');
-    } catch (error) {
-      console.error(error);
+    } catch (err) {
+      console.error(err);
       toast.error('Erro ao fazer upload da foto da cidade');
     } finally {
       setUploadingImage(false);
@@ -151,8 +179,8 @@ export default function AdminCities() {
       }
       setOpenDialog(false);
       fetchCities();
-    } catch (error) {
-      console.error(error);
+    } catch (err) {
+      console.error(err);
       toast.error('Erro ao salvar cidade');
     } finally {
       setSaving(false);
@@ -164,8 +192,8 @@ export default function AdminCities() {
       await citiesApi.update(city.id, { ativo: !city.ativo });
       toast.success(`Cidade ${!city.ativo ? 'ativada' : 'inativada'} com sucesso`);
       fetchCities();
-    } catch (error) {
-      console.error(error);
+    } catch (err) {
+      console.error(err);
       toast.error('Erro ao alterar status da cidade');
     }
   };
@@ -184,9 +212,11 @@ export default function AdminCities() {
       setConfirmDeleteOpen(false);
       setCityToDelete(null);
       fetchCities();
-    } catch (error: any) {
-      console.error(error);
-      const msg = error.response?.data?.message || 'Erro ao excluir cidade. Verifique se existem estabelecimentos associados.';
+    } catch (err: any) {
+      console.error(err);
+      const msg =
+        err.response?.data?.message ||
+        'Erro ao excluir cidade. Verifique se existem estabelecimentos associados.';
       toast.error(msg);
     } finally {
       setDeleting(false);
@@ -198,277 +228,329 @@ export default function AdminCities() {
     setCityToDelete(null);
   };
 
-  return (
-    <Box sx={{ p: 4, maxWidth: 1200, margin: '0 auto' }}>
-      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Box>
-          <Typography variant="h4" sx={{ fontFamily: '"Outfit", sans-serif', fontWeight: 800, mb: 0.5 }}>
-            Cidades Cadastradas
-          </Typography>
-          <Typography variant="body1" color="text.secondary">
-            Gerencie as cidades atendidas pelo sistema, suas coordenadas e descrições.
-          </Typography>
-        </Box>
-        <Button
-          variant="contained"
-          startIcon={<Add />}
-          onClick={handleOpenAdd}
-          sx={{
-            borderRadius: '10px',
-            textTransform: 'none',
-            fontWeight: 600,
-            background: 'linear-gradient(135deg, #0097A7, #00BCD4)',
-            boxShadow: '0 4px 14px 0 rgba(0, 151, 167, 0.3)',
-          }}
-        >
-          Nova Cidade
-        </Button>
-      </Box>
+  const term = search.trim().toLowerCase();
+  const filteredCities = term
+    ? cities.filter(
+        (city) =>
+          city.nome.toLowerCase().includes(term) ||
+          (city.estado || '').toLowerCase().includes(term),
+      )
+    : cities;
+  const linkedEstablishments = cityToDelete?._count?.estabelecimentos ?? 0;
 
-      {loading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-          <CircularProgress />
-        </Box>
-      ) : (
-        <Paper
-          sx={{
-            borderRadius: '20px',
-            border: '1px solid',
-            borderColor: 'divider',
-            boxShadow: '0 8px 32px 0 rgba(0,0,0,0.02)',
-            overflow: 'hidden',
-          }}
-        >
-          <TableContainer>
-            <Table>
-              <TableHead sx={{ bgcolor: 'rgba(0,0,0,0.02)' }}>
+  return (
+    <PageContainer maxWidth="content">
+      <PageHeader
+        overline="Catálogo"
+        title="Cidades"
+        subtitle="Gerencie as cidades atendidas pela plataforma, suas coordenadas e descrições."
+        icon={<LocationCity />}
+        actions={
+          <Button variant="contained" startIcon={<Add />} onClick={handleOpenAdd}>
+            Nova cidade
+          </Button>
+        }
+      />
+
+      <DataToolbar>
+        <DataToolbarGroup>
+          <SearchField
+            value={search}
+            onChange={setSearch}
+            placeholder="Buscar por cidade ou UF"
+            width={320}
+          />
+        </DataToolbarGroup>
+        <Typography variant="caption" color="textSecondary">
+          {filteredCities.length} de {cities.length} {cities.length === 1 ? 'cidade' : 'cidades'}
+        </Typography>
+      </DataToolbar>
+
+      <SectionCard noPadding>
+        {loading ? (
+          <Box sx={{ p: 2.5 }}>
+            <TableSkeleton rows={6} columns={4} />
+          </Box>
+        ) : error ? (
+          <ErrorState
+            title="Não foi possível carregar as cidades"
+            description="Ocorreu uma falha ao buscar as cidades cadastradas."
+            onRetry={fetchCities}
+          />
+        ) : cities.length === 0 ? (
+          <EmptyState
+            icon={<LocationCity />}
+            title="Nenhuma cidade cadastrada"
+            description="Cadastre a primeira cidade atendida para vincular estabelecimentos e eventos."
+            action={
+              <Button variant="contained" startIcon={<Add />} onClick={handleOpenAdd}>
+                Nova cidade
+              </Button>
+            }
+          />
+        ) : filteredCities.length === 0 ? (
+          <EmptyState
+            icon={EmptySearchIcon}
+            title="Nenhuma cidade encontrada"
+            description="Ajuste a busca para encontrar a cidade desejada."
+            action={
+              <Button variant="outlined" onClick={() => setSearch('')}>
+                Limpar busca
+              </Button>
+            }
+          />
+        ) : (
+          <TableContainer sx={{ overflowX: 'auto' }}>
+            <Table sx={{ minWidth: 640 }}>
+              <TableHead>
                 <TableRow>
-                  <TableCell sx={{ fontWeight: 600 }}>Nome</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Estado</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Geolocalização</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Estabelecimentos</TableCell>
-                  <TableCell align="center" sx={{ fontWeight: 600 }}>Ativo</TableCell>
-                  <TableCell align="center" sx={{ fontWeight: 600 }}>Ações</TableCell>
+                  <TableCell>Cidade</TableCell>
+                  <TableCell align="right">Estabelecimentos</TableCell>
+                  <TableCell>Status</TableCell>
+                  <TableCell align="right">Ações</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {cities.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={6} align="center" sx={{ py: 6, color: 'text.secondary' }}>
-                      Nenhuma cidade cadastrada ainda.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  cities.map((city) => (
-                    <TableRow key={city.id} hover>
-                      <TableCell sx={{ fontWeight: 600 }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                          <Avatar
-                            src={getPhotoUrl(city.fotoPerfil)}
-                            sx={{ width: 32, height: 32, bgcolor: 'rgba(0,151,167,0.08)' }}
-                          >
-                            <LocationCity sx={{ fontSize: 18, color: 'primary.main' }} />
-                          </Avatar>
-                          {city.nome}
+                {filteredCities.map((city) => (
+                  <TableRow key={city.id} hover>
+                    <TableCell>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                        <Avatar
+                          src={getPhotoUrl(city.fotoPerfil)}
+                          alt={`Foto da cidade de ${city.nome}`}
+                          sx={{ width: 36, height: 36, fontSize: '0.875rem' }}
+                        >
+                          <LocationCity sx={{ fontSize: 18 }} />
+                        </Avatar>
+                        <Box sx={{ minWidth: 0 }}>
+                          <Typography variant="subtitle2" sx={{ fontWeight: 600 }} noWrap>
+                            {city.nome}
+                          </Typography>
+                          <Typography variant="caption" color="textSecondary" noWrap>
+                            {city.estado} · {coordinates(city)}
+                          </Typography>
                         </Box>
-                      </TableCell>
-                      <TableCell>{city.estado}</TableCell>
-                      <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>
-                        {parseFloat(city.latitude.toString()).toFixed(4)}, {parseFloat(city.longitude.toString()).toFixed(4)}
-                      </TableCell>
-                      <TableCell align="center">{city._count?.estabelecimentos ?? 0}</TableCell>
-                      <TableCell align="center">
+                      </Box>
+                    </TableCell>
+                    <TableCell align="right">
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                        {city._count?.estabelecimentos ?? 0}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                        <StatusChip status={city.ativo ? 'ATIVO' : 'INATIVO'} />
                         <Switch
                           checked={city.ativo}
                           onChange={() => handleToggleActive(city)}
                           color="primary"
+                          size="small"
+                          slotProps={{
+                            input: {
+                              'aria-label': `${city.ativo ? 'Inativar' : 'Ativar'} cidade ${city.nome}`,
+                            },
+                          }}
                         />
-                      </TableCell>
-                      <TableCell align="center">
+                      </Stack>
+                    </TableCell>
+                    <TableCell align="right">
+                      <Stack direction="row" spacing={0.5} sx={{ justifyContent: 'flex-end' }}>
                         <Tooltip title="Editar">
-                          <IconButton onClick={() => handleOpenEdit(city)} color="primary" size="small" sx={{ mr: 1 }}>
+                          <IconButton
+                            size="small"
+                            aria-label={`Editar cidade ${city.nome}`}
+                            onClick={() => handleOpenEdit(city)}
+                          >
                             <Edit fontSize="small" />
                           </IconButton>
                         </Tooltip>
                         <Tooltip title="Excluir">
-                          <IconButton onClick={() => handleDeleteClick(city)} color="error" size="small">
+                          <IconButton
+                            size="small"
+                            aria-label={`Excluir cidade ${city.nome}`}
+                            color="error"
+                            onClick={() => handleDeleteClick(city)}
+                          >
                             <Delete fontSize="small" />
                           </IconButton>
                         </Tooltip>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
+                      </Stack>
+                    </TableCell>
+                  </TableRow>
+                ))}
               </TableBody>
             </Table>
           </TableContainer>
-        </Paper>
-      )}
+        )}
+      </SectionCard>
 
-      {/* Add/Edit Dialog */}
-      <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="sm" fullWidth sx={{ '& .MuiDialog-paper': { borderRadius: '16px' } }}>
-        <DialogTitle sx={{ fontFamily: '"Outfit", sans-serif', fontWeight: 700 }}>
-          {selectedCity ? 'Editar Cidade' : 'Cadastrar Nova Cidade'}
-        </DialogTitle>
-        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, pt: 1 }}>
-          {/* Foto da Cidade */}
-          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5, mb: 1 }}>
-            <Box sx={{ position: 'relative' }}>
-              <Avatar
-                src={getPhotoUrl(fotoPerfil)}
-                sx={{ width: 100, height: 100, border: '2px solid', borderColor: 'primary.main', bgcolor: 'rgba(0,151,167,0.08)' }}
-              >
-                <LocationCity sx={{ fontSize: 50, color: 'primary.main' }} />
-              </Avatar>
-              {uploadingImage && (
-                <Box
-                  sx={{
-                    position: 'absolute',
-                    inset: 0,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    bgcolor: 'rgba(255,255,255,0.7)',
-                    borderRadius: '50%',
-                  }}
+      {/* Diálogo de cadastro/edição */}
+      <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>{selectedCity ? 'Editar cidade' : 'Cadastrar cidade'}</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="textSecondary" sx={{ mb: 2.5 }}>
+            A foto e a descrição aparecem para os hóspedes na busca por destinos.
+          </Typography>
+
+          <FormSection title="Foto de capa">
+            <Stack spacing={1.5} sx={{ alignItems: 'center' }}>
+              <Box sx={{ position: 'relative' }}>
+                <Avatar
+                  src={getPhotoUrl(fotoPerfil)}
+                  alt={nome ? `Foto da cidade de ${nome}` : 'Prévia da foto da cidade'}
+                  variant="rounded"
+                  sx={{ width: 96, height: 96, fontSize: '2rem' }}
                 >
-                  <CircularProgress size={24} />
-                </Box>
-              )}
-            </Box>
-            <Stack direction="row" spacing={1}>
-              <Button
-                variant="outlined"
-                component="label"
-                size="small"
-                disabled={uploadingImage}
-                sx={{ textTransform: 'none', borderRadius: '8px' }}
-              >
-                {fotoPerfil ? 'Alterar Foto' : 'Adicionar Foto'}
-                <input type="file" accept="image/*" hidden onChange={handlePhotoUpload} />
-              </Button>
-              {fotoPerfil && (
+                  <LocationCity sx={{ fontSize: 44 }} />
+                </Avatar>
+                {uploadingImage && (
+                  <Box
+                    sx={{
+                      position: 'absolute',
+                      inset: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderRadius: 3,
+                      bgcolor: (t) => alpha(t.palette.background.paper, 0.72),
+                    }}
+                  >
+                    <CircularProgress size={24} />
+                  </Box>
+                )}
+              </Box>
+              <Stack direction="row" spacing={1}>
                 <Button
-                  variant="text"
-                  color="error"
+                  component="label"
+                  variant="outlined"
                   size="small"
-                  onClick={() => setFotoPerfil('')}
-                  sx={{ textTransform: 'none' }}
+                  startIcon={<PhotoCamera />}
+                  disabled={uploadingImage}
                 >
-                  Remover
+                  {fotoPerfil ? 'Alterar foto' : 'Adicionar foto'}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    hidden
+                    aria-label="Selecionar foto da cidade"
+                    onChange={handlePhotoUpload}
+                  />
                 </Button>
-              )}
+                {fotoPerfil && (
+                  <Button
+                    variant="text"
+                    color="error"
+                    size="small"
+                    onClick={() => setFotoPerfil('')}
+                  >
+                    Remover
+                  </Button>
+                )}
+              </Stack>
             </Stack>
-          </Box>
+          </FormSection>
 
-          <Box sx={{ display: 'flex', gap: 2 }}>
-            <TextField
-              label="Nome da Cidade"
-              fullWidth
-              required
-              value={nome}
-              onChange={(e) => setNome(e.target.value)}
-              placeholder="Ex: Natal"
-            />
-            <TextField
-              label="UF"
-              value={estado}
-              onChange={(e) => setEstado(e.target.value)}
-              sx={{ width: 100 }}
-              slotProps={{ htmlInput: { maxLength: 2 } }}
-            />
-          </Box>
-          <Box sx={{ display: 'flex', gap: 2 }}>
-            <TextField
-              label="Latitude"
-              type="number"
-              fullWidth
-              required
-              value={latitude}
-              onChange={(e) => setLatitude(e.target.value)}
-              placeholder="Ex: -5.7945"
-            />
-            <TextField
-              label="Longitude"
-              type="number"
-              fullWidth
-              required
-              value={longitude}
-              onChange={(e) => setLongitude(e.target.value)}
-              placeholder="Ex: -35.2110"
-            />
-          </Box>
-          <TextField
-            label="Descrição / Pontos Fortes"
-            multiline
-            rows={3}
-            fullWidth
-            value={descricao}
-            onChange={(e) => setDescricao(e.target.value)}
-            placeholder="Ex: Conhecida pelas belas dunas e praias, polo turístico do Rio Grande do Norte..."
-          />
+          <Divider sx={{ my: 2.5 }} />
+
+          <FormSection
+            title="Dados da cidade"
+            description="Nome, UF e coordenadas são usados na busca e no mapa."
+          >
+            <FormGrid columns={3}>
+              <FormSpan span={3}>
+                <TextField
+                  label="Nome da cidade"
+                  fullWidth
+                  required
+                  value={nome}
+                  onChange={(e) => setNome(e.target.value)}
+                  placeholder="Ex: Natal"
+                />
+              </FormSpan>
+              <TextField
+                label="UF"
+                value={estado}
+                onChange={(e) => setEstado(e.target.value)}
+                slotProps={{ htmlInput: { maxLength: 2, 'aria-label': 'UF da cidade' } }}
+              />
+              <TextField
+                label="Latitude"
+                type="number"
+                required
+                value={latitude}
+                onChange={(e) => setLatitude(e.target.value)}
+                placeholder="Ex: -5.7945"
+              />
+              <TextField
+                label="Longitude"
+                type="number"
+                required
+                value={longitude}
+                onChange={(e) => setLongitude(e.target.value)}
+                placeholder="Ex: -35.2110"
+              />
+              <FormSpan span={3}>
+                <TextField
+                  label="Descrição e pontos fortes"
+                  multiline
+                  rows={3}
+                  fullWidth
+                  value={descricao}
+                  onChange={(e) => setDescricao(e.target.value)}
+                  placeholder="Ex: Conhecida pelas dunas e praias, polo turístico do Rio Grande do Norte."
+                />
+              </FormSpan>
+            </FormGrid>
+          </FormSection>
         </DialogContent>
-        <DialogActions sx={{ p: 2.5 }}>
-          <Button onClick={() => setOpenDialog(false)} disabled={saving} sx={{ textTransform: 'none', fontWeight: 600 }}>
+        <DialogActions>
+          <Button color="inherit" onClick={() => setOpenDialog(false)} disabled={saving}>
             Cancelar
           </Button>
-          <Button
-            variant="contained"
-            onClick={handleSave}
-            disabled={saving}
+          <Button variant="contained" onClick={handleSave} loading={saving}>
+            {selectedCity ? 'Salvar alterações' : 'Cadastrar cidade'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Confirmação de exclusão */}
+      <ConfirmDialog
+        open={confirmDeleteOpen}
+        title="Excluir cidade"
+        description={
+          <>
+            Deseja excluir a cidade <strong>{cityToDelete?.nome}</strong>? Esta ação não pode ser
+            desfeita.
+          </>
+        }
+        confirmLabel="Excluir cidade"
+        loading={deleting}
+        tone="error"
+        onConfirm={handleDeleteConfirm}
+        onClose={handleDeleteCancel}
+      >
+        {linkedEstablishments > 0 && (
+          <Box
             sx={{
-              borderRadius: '8px',
-              textTransform: 'none',
-              fontWeight: 600,
-              background: 'linear-gradient(135deg, #0097A7, #00BCD4)',
+              mt: 2,
+              p: 1.5,
+              borderRadius: 2,
+              border: '1px solid',
+              borderColor: (t) => alpha(t.palette.warning.main, 0.35),
+              bgcolor: (t) => alpha(t.palette.warning.main, 0.08),
+              color: 'text.primary',
             }}
           >
-            {saving ? <CircularProgress size={24} color="inherit" /> : 'Salvar'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Delete Confirmation Dialog */}
-      <Dialog
-        open={confirmDeleteOpen}
-        onClose={handleDeleteCancel}
-        maxWidth="xs"
-        fullWidth
-        sx={{ '& .MuiDialog-paper': { borderRadius: '16px' } }}
-      >
-        <DialogTitle sx={{ fontFamily: '"Outfit", sans-serif', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
-          <WarningAmber sx={{ color: 'error.main' }} />
-          Confirmar Exclusão
-        </DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            Deseja realmente excluir a cidade <strong>{cityToDelete?.nome}</strong>? Esta ação é irreversível e não poderá ser desfeita.
-          </DialogContentText>
-          {(cityToDelete?._count?.estabelecimentos ?? 0) > 0 && (
-            <DialogContentText sx={{ mt: 1.5, color: 'warning.main', fontWeight: 500 }}>
-              ⚠️ Esta cidade possui {cityToDelete?._count?.estabelecimentos} estabelecimento(s) vinculado(s). A exclusão pode falhar.
-            </DialogContentText>
-          )}
-        </DialogContent>
-        <DialogActions sx={{ p: 2.5, gap: 1 }}>
-          <Button
-            onClick={handleDeleteCancel}
-            disabled={deleting}
-            sx={{ textTransform: 'none', fontWeight: 600 }}
-          >
-            Cancelar
-          </Button>
-          <Button
-            variant="contained"
-            color="error"
-            onClick={handleDeleteConfirm}
-            disabled={deleting}
-            sx={{ borderRadius: '8px', textTransform: 'none', fontWeight: 600 }}
-          >
-            {deleting ? 'Excluindo...' : 'Sim, Excluir'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </Box>
+            <Typography variant="body2">
+              Esta cidade possui {linkedEstablishments}{' '}
+              {linkedEstablishments === 1
+                ? 'estabelecimento vinculado'
+                : 'estabelecimentos vinculados'}
+              . A exclusão pode falhar.
+            </Typography>
+          </Box>
+        )}
+      </ConfirmDialog>
+    </PageContainer>
   );
 }

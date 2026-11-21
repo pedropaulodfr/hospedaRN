@@ -59,6 +59,13 @@ export class ReservationsService {
 
     const valorTotal = await this.roomsService.calculatePrice(dto.quartoId, checkIn, checkOut);
 
+    // Snapshot do modo de pagamento: se o estabelecimento trocar a configuração
+    // depois, esta reserva continua no modo em que foi criada.
+    const estabelecimentoModo = await this.prisma.estabelecimento.findUnique({
+      where: { id: dto.estabelecimentoId },
+      select: { modoPagamento: true },
+    });
+
     const reserva = await this.prisma.reserva.create({
       data: {
         codigoReserva: generateBookingCode(),
@@ -70,6 +77,7 @@ export class ReservationsService {
         adultos: dto.adultos || 1,
         criancas: dto.criancas || 0,
         valorTotal,
+        modoPagamento: estabelecimentoModo?.modoPagamento ?? 'PADRAO',
         observacoes: dto.observacoes,
         status: 'SOLICITADA',
       },
@@ -105,7 +113,16 @@ export class ReservationsService {
     return reserva;
   }
 
-  async findAll(filters: { hospedeId?: string; estabelecimentoId?: string; status?: string; page?: number; limit?: number }) {
+  async findAll(filters: {
+    hospedeId?: string;
+    estabelecimentoId?: string;
+    status?: string;
+    dataInicio?: string;
+    dataFim?: string;
+    campoData?: string;
+    page?: number;
+    limit?: number;
+  }) {
     const page = filters.page || 1;
     const limit = filters.limit || 10;
     const skip = (page - 1) * limit;
@@ -114,6 +131,12 @@ export class ReservationsService {
     if (filters.hospedeId) where.hospedeId = filters.hospedeId;
     if (filters.estabelecimentoId) where.estabelecimentoId = filters.estabelecimentoId;
     if (filters.status) where.status = filters.status;
+
+    // Intervalo de datas (opcional). `estadia` = reservas que se sobrepõem ao
+    // intervalo informado (inclui quem já estava hospedado no início da janela);
+    // `solicitacao` = data em que a reserva foi criada. Fuso: America/Fortaleza.
+    const filtroData = this.buildDateFilter(filters);
+    if (filtroData) Object.assign(where, filtroData);
 
     const [data, total] = await Promise.all([
       this.prisma.reserva.findMany({
@@ -125,6 +148,40 @@ export class ReservationsService {
     ]);
 
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+  }
+
+  /**
+   * Monta o fragmento de `where` para o intervalo de datas.
+   * Datas inválidas são ignoradas (não derrubam a listagem).
+   *
+   * - `estadia` (padrão): sobreposição com o intervalo — `checkIn <= fim` e
+   *   `checkOut >= início`. Assim uma reserva de 20/11 a 25/11 aparece ao filtrar
+   *   22/11–23/11, como se espera de "período da estadia".
+   * - `solicitacao`: `criadoEm` dentro do intervalo (timestamptz, UTC-3).
+   */
+  private buildDateFilter(filters: {
+    dataInicio?: string;
+    dataFim?: string;
+    campoData?: string;
+  }): Record<string, any> | null {
+    const valido = (valor?: string) => Boolean(valor && /^\d{4}-\d{2}-\d{2}$/.test(valor));
+
+    const temInicio = valido(filters.dataInicio);
+    const temFim = valido(filters.dataFim);
+    if (!temInicio && !temFim) return null;
+
+    if (filters.campoData === 'solicitacao') {
+      const range: { gte?: Date; lte?: Date } = {};
+      if (temInicio) range.gte = new Date(`${filters.dataInicio}T00:00:00-03:00`);
+      if (temFim) range.lte = new Date(`${filters.dataFim}T23:59:59.999-03:00`);
+      return { criadoEm: range };
+    }
+
+    // checkIn/checkOut são `@db.Date`: compara em UTC (meia-noite).
+    const where: Record<string, any> = {};
+    if (temFim) where.checkIn = { lte: new Date(`${filters.dataFim}T00:00:00.000Z`) };
+    if (temInicio) where.checkOut = { gte: new Date(`${filters.dataInicio}T00:00:00.000Z`) };
+    return where;
   }
 
   async findOne(id: string) {
@@ -175,6 +232,9 @@ export class ReservationsService {
       valorTotal: Number(updatedReserva.valorTotal),
       pixKey: 'hospedarn@hospedarn.com.br',
       pixType: 'E-mail',
+      pagamentoAutomatico:
+        (updatedReserva.modoPagamento ??
+          updatedReserva.estabelecimento.modoPagamento) === 'MERCADO_PAGO',
     }).catch(() => {});
 
     return updatedReserva;
@@ -195,6 +255,18 @@ export class ReservationsService {
 
     if (['FINALIZADA', 'CANCELADA'].includes(reserva.status)) {
       throw new BadRequestException('Esta reserva não pode ser cancelada');
+    }
+
+    // Reserva com chegada já registrada não pode ser cancelada: evita deixar o
+    // CheckIn "órfão" de uma reserva cancelada (inconsistência status × estadia).
+    const checkinExistente = await this.prisma.checkIn.findUnique({
+      where: { reservaId: id },
+      select: { id: true },
+    });
+    if (checkinExistente) {
+      throw new BadRequestException(
+        'Reserva com check-in já realizado não pode ser cancelada',
+      );
     }
 
     const cancelledReserva = await this.prisma.reserva.update({

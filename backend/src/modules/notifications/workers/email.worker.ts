@@ -106,10 +106,13 @@ export class EmailWorker extends WorkerHost {
             </div>
             <div style="background: #FFF3E0; padding: 20px; border-radius: 8px; border-left: 4px solid #FF9800; margin-top: 20px;">
               <h3 style="margin: 0 0 10px 0;">💳 Pagamento</h3>
-              <p>Sua reserva está <strong>aguardando pagamento</strong>. Para confirmá-la, realize o pagamento via PIX:</p>
+              ${ctx.pagamentoAutomatico
+                ? `<p>Sua reserva está <strong>aguardando pagamento</strong>. Acesse o sistema e conclua o pagamento (<strong>PIX</strong>, <strong>boleto</strong> ou <strong>cartão</strong>) pela plataforma Mercado Pago.</p>
+              <p style="margin-bottom: 0;">Assim que o Mercado Pago confirmar o pagamento, sua reserva será reconhecida automaticamente — não é preciso enviar comprovante.</p>`
+                : `<p>Sua reserva está <strong>aguardando pagamento</strong>. Para confirmá-la, realize o pagamento via PIX:</p>
               <p><strong>Chave PIX:</strong> ${ctx.pixKey}</p>
               <p><strong>Tipo:</strong> ${ctx.pixType}</p>
-              <p style="margin-bottom: 0;">Após efetuar o pagamento, anexe o comprovante no sistema para que o estabelecimento possa confirmá-lo.</p>
+              <p style="margin-bottom: 0;">Após efetuar o pagamento, anexe o comprovante no sistema para que o estabelecimento possa confirmá-lo.</p>`}
             </div>
           </div>
           <div style="padding: 15px; background: #0097A7; text-align: center;">
@@ -189,6 +192,27 @@ export class EmailWorker extends WorkerHost {
               <p><strong>Check-out:</strong> ${ctx.checkOut}</p>
             </div>
             <p style="margin-top: 20px;">Sua reserva está confirmada! Agora é só comparecer ao local na data e horários agendados para se hospedar. 🎊</p>
+          </div>
+          <div style="padding: 15px; background: #0097A7; text-align: center;">
+            <p style="color: white; margin: 0; font-size: 12px;">HospedaRN — Hospedagens no Rio Grande do Norte</p>
+          </div>
+        </div>
+      `,
+      'pagamento-mp-confirmed-establishment': (ctx) => `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background: linear-gradient(135deg, #0097A7, #00BCD4); padding: 30px; text-align: center;">
+            <h1 style="color: white; margin: 0;">🏖️ HospedaRN</h1>
+          </div>
+          <div style="padding: 30px; background: #f9f9f9;">
+            <h2>💰 Pagamento recebido</h2>
+            <p>O pagamento da reserva de <strong>${ctx.nome}</strong> foi aprovado automaticamente pelo Mercado Pago.</p>
+            <div style="background: white; padding: 20px; border-radius: 8px; border-left: 4px solid #4CAF50;">
+              <p><strong>Código:</strong> ${ctx.codigoReserva}</p>
+              <p><strong>Estabelecimento:</strong> ${ctx.estabelecimento}</p>
+              <p><strong>Check-in:</strong> ${ctx.checkIn}</p>
+              <p><strong>Check-out:</strong> ${ctx.checkOut}</p>
+            </div>
+            <p style="margin-top: 20px;">A reserva já foi finalizada automaticamente — nenhuma aprovação manual é necessária.</p>
           </div>
           <div style="padding: 15px; background: #0097A7; text-align: center;">
             <p style="color: white; margin: 0; font-size: 12px;">HospedaRN — Hospedagens no Rio Grande do Norte</p>

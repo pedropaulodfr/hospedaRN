@@ -24,6 +24,8 @@ import GuestProfile from './pages/guest/GuestProfile';
 // Establishment pages
 import EstDashboard from './pages/establishment/EstDashboard';
 import EstReservations from './pages/establishment/EstReservations';
+import EstCheckin from './pages/establishment/EstCheckin';
+import EstCheckout from './pages/establishment/EstCheckout';
 import EstRooms from './pages/establishment/EstRooms';
 import EstPhotos from './pages/establishment/EstPhotos';
 import EstPrices from './pages/establishment/EstPrices';
@@ -112,6 +114,8 @@ export default function App() {
         >
           <Route index element={<ProtectedRoute permission="EST_DASHBOARD"><EstDashboard /></ProtectedRoute>} />
           <Route path="reservas" element={<ProtectedRoute permission="EST_RESERVATIONS"><EstReservations /></ProtectedRoute>} />
+          <Route path="checkin" element={<ProtectedRoute permission="EST_RESERVATIONS"><EstCheckin /></ProtectedRoute>} />
+          <Route path="checkout" element={<ProtectedRoute permission="EST_RESERVATIONS"><EstCheckout /></ProtectedRoute>} />
           <Route path="quartos" element={<ProtectedRoute permission="EST_ROOMS"><EstRooms /></ProtectedRoute>} />
           <Route path="fotos" element={<ProtectedRoute permission="EST_PHOTOS"><EstPhotos /></ProtectedRoute>} />
           <Route path="precos" element={<ProtectedRoute permission="EST_PRICES"><EstPrices /></ProtectedRoute>} />

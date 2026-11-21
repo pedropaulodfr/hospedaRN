@@ -1,6 +1,20 @@
 import { useState } from 'react';
-import { Box, Typography, Container, Button, TextField, Alert } from '@mui/material';
+import { Link as RouterLink } from 'react-router-dom';
+import {
+  Box,
+  Typography,
+  Button,
+  TextField,
+  Card,
+  CardContent,
+  Alert,
+  CircularProgress,
+  InputAdornment,
+  Link,
+} from '@mui/material';
+import { Email, ArrowBack, LockResetOutlined } from '@mui/icons-material';
 import { authApi } from '../../services/api';
+import { PageContainer, Logo } from '../../components/common';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
@@ -27,46 +41,98 @@ export default function ForgotPasswordPage() {
   };
 
   return (
-    <Container maxWidth="xs" sx={{ py: 8 }}>
-      <Box 
-        component="form" 
-        onSubmit={handleSubmit}
-        sx={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'center' }}
-      >
-        <Typography variant="h4" sx={{ fontWeight: 800 }}>Esqueci a Senha</Typography>
-        
-        {success && (
-          <Alert severity="success" sx={{ width: '100%' }}>
-            Instruções enviadas com sucesso! Verifique sua caixa de entrada.
-          </Alert>
-        )}
-
-        {error && (
-          <Alert severity="error" sx={{ width: '100%' }}>
-            {error}
-          </Alert>
-        )}
-
-        <TextField 
-          label="E-mail" 
-          type="email"
-          fullWidth 
-          required
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          disabled={loading}
-        />
-        <Button 
-          type="submit" 
-          variant="contained" 
-          color="primary" 
-          fullWidth 
-          sx={{ mt: 2 }}
-          disabled={loading}
-        >
-          {loading ? 'Enviando...' : 'Enviar Instruções'}
-        </Button>
+    <PageContainer maxWidth="narrow">
+      <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3 }}>
+        <Logo size={36} to="/" />
       </Box>
-    </Container>
+
+      <Card>
+        <CardContent sx={{ p: { xs: 3, sm: 4 } }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', mb: 3 }}>
+            <Box
+              aria-hidden
+              sx={{
+                width: 52,
+                height: 52,
+                borderRadius: 3,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                bgcolor: 'action.selected',
+                color: 'primary.main',
+                mb: 2,
+              }}
+            >
+              <LockResetOutlined sx={{ fontSize: 28 }} />
+            </Box>
+            <Typography variant="h4" component="h1">
+              Recuperar senha
+            </Typography>
+            <Typography variant="body2" color="textSecondary" sx={{ mt: 1, maxWidth: 400 }}>
+              Informe o e-mail da sua conta e enviaremos as instruções para criar uma nova senha.
+            </Typography>
+          </Box>
+
+          {success && (
+            <Alert severity="success" sx={{ mb: 2.5 }}>
+              Instruções enviadas com sucesso! Verifique sua caixa de entrada.
+            </Alert>
+          )}
+
+          {error && (
+            <Alert severity="error" sx={{ mb: 2.5 }}>
+              {error}
+            </Alert>
+          )}
+
+          <Box component="form" noValidate onSubmit={handleSubmit} sx={{ display: 'grid', gap: 2.5 }}>
+            <TextField
+              id="forgot-email"
+              label="E-mail"
+              type="email"
+              autoComplete="email"
+              fullWidth
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              disabled={loading}
+              slotProps={{
+                input: {
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <Email aria-hidden sx={{ color: 'text.secondary', fontSize: 20 }} />
+                    </InputAdornment>
+                  ),
+                },
+              }}
+            />
+
+            <Button
+              type="submit"
+              variant="contained"
+              color="primary"
+              size="large"
+              fullWidth
+              disabled={loading}
+              aria-busy={loading}
+            >
+              {loading ? <CircularProgress size={24} color="inherit" /> : 'Enviar instruções'}
+            </Button>
+          </Box>
+
+          <Box sx={{ textAlign: 'center', mt: 3 }}>
+            <Link
+              component={RouterLink}
+              to="/login"
+              variant="body2"
+              sx={{ fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 0.75 }}
+            >
+              <ArrowBack aria-hidden sx={{ fontSize: 18 }} />
+              Voltar para o login
+            </Link>
+          </Box>
+        </CardContent>
+      </Card>
+    </PageContainer>
   );
 }

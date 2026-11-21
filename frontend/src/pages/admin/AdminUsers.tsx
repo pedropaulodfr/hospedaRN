@@ -1,35 +1,51 @@
 import { useEffect, useState } from 'react';
 import {
+  Avatar,
   Box,
-  Typography,
-  Paper,
   Button,
+  Checkbox,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Divider,
+  FormControl,
+  FormControlLabel,
+  IconButton,
+  InputLabel,
+  MenuItem,
+  Paper,
+  Select,
+  Stack,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-  IconButton,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  DialogContentText,
   TextField,
-  CircularProgress,
   Tooltip,
-  Avatar,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  FormGroup,
-  FormControlLabel,
-  Checkbox,
-  Chip,
+  Typography,
 } from '@mui/material';
-import { Add, Edit, Delete, Person, WarningAmber } from '@mui/icons-material';
+import { Add, Delete, Edit, ManageAccounts, Person } from '@mui/icons-material';
+import {
+  ConfirmDialog,
+  DataToolbar,
+  DataToolbarGroup,
+  EmptySearchIcon,
+  EmptyState,
+  ErrorState,
+  FormGrid,
+  FormSection,
+  FormSpan,
+  PageContainer,
+  PageHeader,
+  SearchField,
+  SectionCard,
+  StatusChip,
+  TableSkeleton,
+} from '../../components/common';
 import { subUsersApi } from '../../services/api';
 import toast from 'react-hot-toast';
 
@@ -55,6 +71,9 @@ const PERMISSIONS_LIST = [
 export default function AdminUsers() {
   const [users, setUsers] = useState<SubUser[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [search, setSearch] = useState('');
+  const [perfilFilter, setPerfilFilter] = useState('all');
   const [openDialog, setOpenDialog] = useState(false);
   const [selectedUser, setSelectedUser] = useState<SubUser | null>(null);
 
@@ -73,10 +92,12 @@ export default function AdminUsers() {
   const fetchUsers = async () => {
     try {
       setLoading(true);
+      setError(false);
       const res = await subUsersApi.getAll();
       setUsers(res.data.data || []);
-    } catch (error) {
-      console.error(error);
+    } catch (err) {
+      console.error(err);
+      setError(true);
       toast.error('Erro ao carregar usuários');
     } finally {
       setLoading(false);
@@ -107,7 +128,7 @@ export default function AdminUsers() {
 
   const handlePermissionChange = (value: string) => {
     setPermissoes((prev) =>
-      prev.includes(value) ? prev.filter((p) => p !== value) : [...prev, value]
+      prev.includes(value) ? prev.filter((p) => p !== value) : [...prev, value],
     );
   };
 
@@ -135,9 +156,9 @@ export default function AdminUsers() {
       }
       setOpenDialog(false);
       fetchUsers();
-    } catch (error: any) {
-      console.error(error);
-      const msg = error.response?.data?.message || 'Erro ao salvar usuário';
+    } catch (err: any) {
+      console.error(err);
+      const msg = err.response?.data?.message || 'Erro ao salvar usuário';
       toast.error(msg);
     } finally {
       setSaving(false);
@@ -158,157 +179,263 @@ export default function AdminUsers() {
       setConfirmDeleteOpen(false);
       setUserToDelete(null);
       fetchUsers();
-    } catch (error: any) {
-      console.error(error);
+    } catch (err) {
+      console.error(err);
       toast.error('Erro ao excluir usuário');
     } finally {
       setDeleting(false);
     }
   };
 
-  return (
-    <Box sx={{ p: 4, maxWidth: 1200, margin: '0 auto' }}>
-      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Box>
-          <Typography variant="h4" sx={{ fontFamily: '"Outfit", sans-serif', fontWeight: 800, mb: 0.5 }}>
-            Usuários Gestores
-          </Typography>
-          <Typography variant="body1" color="text.secondary">
-            Gerencie os usuários que têm acesso administrativo ao sistema.
-          </Typography>
-        </Box>
-        <Button
-          variant="contained"
-          startIcon={<Add />}
-          onClick={handleOpenAdd}
-          sx={{
-            borderRadius: '10px',
-            textTransform: 'none',
-            fontWeight: 600,
-            background: 'linear-gradient(135deg, #0097A7, #00BCD4)',
-            boxShadow: '0 4px 14px 0 rgba(0, 151, 167, 0.3)',
-          }}
-        >
-          Novo Usuário
-        </Button>
-      </Box>
+  const handleDeleteCancel = () => {
+    setConfirmDeleteOpen(false);
+    setUserToDelete(null);
+  };
 
-      {loading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-          <CircularProgress />
-        </Box>
-      ) : (
-        <Paper
-          sx={{
-            borderRadius: '20px',
-            border: '1px solid',
-            borderColor: 'divider',
-            boxShadow: '0 8px 32px 0 rgba(0,0,0,0.02)',
-            overflow: 'hidden',
-          }}
-        >
-          <TableContainer>
-            <Table>
-              <TableHead sx={{ bgcolor: 'rgba(0,0,0,0.02)' }}>
+  const term = search.trim().toLowerCase();
+  const filteredUsers = users.filter((user) => {
+    if (perfilFilter !== 'all' && (user.subPerfil || 'Operacional') !== perfilFilter) return false;
+    if (!term) return true;
+    return (
+      user.nome.toLowerCase().includes(term) || (user.email || '').toLowerCase().includes(term)
+    );
+  });
+
+  return (
+    <PageContainer maxWidth="content">
+      <PageHeader
+        overline="Gestão"
+        title="Usuários gestores"
+        subtitle="Gerencie os usuários que têm acesso administrativo ao sistema e suas permissões."
+        icon={<ManageAccounts />}
+        actions={
+          <Button variant="contained" startIcon={<Add />} onClick={handleOpenAdd}>
+            Novo usuário
+          </Button>
+        }
+      />
+
+      <DataToolbar>
+        <DataToolbarGroup>
+          <SearchField
+            value={search}
+            onChange={setSearch}
+            placeholder="Buscar por nome ou e-mail"
+            width={320}
+          />
+          <TextField
+            select
+            size="small"
+            label="Perfil"
+            value={perfilFilter}
+            onChange={(e) => setPerfilFilter(e.target.value)}
+            sx={{ minWidth: 180, maxWidth: 240 }}
+          >
+            <MenuItem value="all">Todos os perfis</MenuItem>
+            <MenuItem value="Operacional">Operacional</MenuItem>
+            <MenuItem value="Admin">Administrador</MenuItem>
+          </TextField>
+        </DataToolbarGroup>
+        <Typography variant="caption" color="textSecondary">
+          {filteredUsers.length} de {users.length} {users.length === 1 ? 'usuário' : 'usuários'}
+        </Typography>
+      </DataToolbar>
+
+      <SectionCard noPadding>
+        {loading ? (
+          <Box sx={{ p: 2.5 }}>
+            <TableSkeleton rows={6} columns={6} />
+          </Box>
+        ) : error ? (
+          <ErrorState
+            title="Não foi possível carregar os usuários"
+            description="Ocorreu uma falha ao buscar os usuários gestores."
+            onRetry={fetchUsers}
+          />
+        ) : users.length === 0 ? (
+          <EmptyState
+            icon={<ManageAccounts />}
+            title="Nenhum usuário gestor cadastrado"
+            description="Crie o primeiro usuário com acesso ao painel administrativo."
+            action={
+              <Button variant="contained" startIcon={<Add />} onClick={handleOpenAdd}>
+                Novo usuário
+              </Button>
+            }
+          />
+        ) : filteredUsers.length === 0 ? (
+          <EmptyState
+            icon={EmptySearchIcon}
+            title="Nenhum usuário encontrado"
+            description="Ajuste a busca ou o filtro de perfil para encontrar o usuário desejado."
+            action={
+              <Button
+                variant="outlined"
+                onClick={() => {
+                  setSearch('');
+                  setPerfilFilter('all');
+                }}
+              >
+                Limpar filtros
+              </Button>
+            }
+          />
+        ) : (
+          <TableContainer sx={{ overflowX: 'auto' }}>
+            <Table sx={{ minWidth: 900 }}>
+              <TableHead>
                 <TableRow>
-                  <TableCell sx={{ fontWeight: 600 }}>Nome</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>E-mail</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Perfil</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Permissões</TableCell>
-                  <TableCell align="center" sx={{ fontWeight: 600 }}>Ações</TableCell>
+                  <TableCell>Nome</TableCell>
+                  <TableCell>E-mail</TableCell>
+                  <TableCell>Perfil</TableCell>
+                  <TableCell>Permissões</TableCell>
+                  <TableCell>Status</TableCell>
+                  <TableCell align="right">Ações</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {users.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={5} align="center" sx={{ py: 6, color: 'text.secondary' }}>
-                      Nenhum usuário cadastrado ainda.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  users.map((user) => (
-                    <TableRow key={user.id} hover>
-                      <TableCell sx={{ fontWeight: 600 }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                          <Avatar sx={{ width: 32, height: 32, bgcolor: 'rgba(0,151,167,0.08)' }}>
-                            <Person sx={{ fontSize: 18, color: 'primary.main' }} />
-                          </Avatar>
+                {filteredUsers.map((user) => (
+                  <TableRow key={user.id} hover>
+                    <TableCell>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                        <Avatar sx={{ width: 36, height: 36, fontSize: '0.875rem' }}>
+                          <Person sx={{ fontSize: 18 }} />
+                        </Avatar>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 600 }} noWrap>
                           {user.nome}
-                        </Box>
-                      </TableCell>
-                      <TableCell>{user.email}</TableCell>
-                      <TableCell>
-                        <Chip label={user.subPerfil || 'Gestor'} size="small" color="primary" variant="outlined" />
-                      </TableCell>
-                      <TableCell>
-                        {user.permissoes?.length > 0 ? (
-                          <Tooltip title={user.permissoes.join(', ')}>
-                            <Typography variant="body2">{user.permissoes.length} permissões</Typography>
-                          </Tooltip>
-                        ) : (
-                          <Typography variant="body2" color="text.secondary">Nenhuma</Typography>
-                        )}
-                      </TableCell>
-                      <TableCell align="center">
+                        </Typography>
+                      </Box>
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2" noWrap>
+                        {user.email}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        size="small"
+                        label={user.subPerfil || 'Gestor'}
+                        variant="outlined"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      {user.permissoes?.length > 0 ? (
+                        <Tooltip title={user.permissoes.join(', ')}>
+                          <Typography variant="body2">
+                            {user.permissoes.length}{' '}
+                            {user.permissoes.length === 1 ? 'permissão' : 'permissões'}
+                          </Typography>
+                        </Tooltip>
+                      ) : (
+                        <Typography variant="caption" color="textSecondary">
+                          Nenhuma
+                        </Typography>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {typeof user.ativo === 'boolean' ? (
+                        <StatusChip status={user.ativo ? 'ATIVO' : 'INATIVO'} />
+                      ) : (
+                        <Typography variant="caption" color="textSecondary">
+                          —
+                        </Typography>
+                      )}
+                    </TableCell>
+                    <TableCell align="right">
+                      <Stack direction="row" spacing={0.5} sx={{ justifyContent: 'flex-end' }}>
                         <Tooltip title="Editar">
-                          <IconButton onClick={() => handleOpenEdit(user)} color="primary" size="small" sx={{ mr: 1 }}>
+                          <IconButton
+                            size="small"
+                            aria-label={`Editar usuário ${user.nome}`}
+                            onClick={() => handleOpenEdit(user)}
+                          >
                             <Edit fontSize="small" />
                           </IconButton>
                         </Tooltip>
                         <Tooltip title="Excluir">
-                          <IconButton onClick={() => handleDeleteClick(user)} color="error" size="small">
+                          <IconButton
+                            size="small"
+                            color="error"
+                            aria-label={`Excluir usuário ${user.nome}`}
+                            onClick={() => handleDeleteClick(user)}
+                          >
                             <Delete fontSize="small" />
                           </IconButton>
                         </Tooltip>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
+                      </Stack>
+                    </TableCell>
+                  </TableRow>
+                ))}
               </TableBody>
             </Table>
           </TableContainer>
-        </Paper>
-      )}
+        )}
+      </SectionCard>
 
-      {/* Add/Edit Dialog */}
-      <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="sm" fullWidth sx={{ '& .MuiDialog-paper': { borderRadius: '16px' } }}>
-        <DialogTitle sx={{ fontFamily: '"Outfit", sans-serif', fontWeight: 700 }}>
-          {selectedUser ? 'Editar Usuário' : 'Cadastrar Novo Usuário'}
-        </DialogTitle>
-        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, pt: 1 }}>
-          <TextField
-            label="Nome Completo"
-            fullWidth
-            required
-            value={nome}
-            onChange={(e) => setNome(e.target.value)}
-          />
-          <TextField
-            label="E-mail"
-            type="email"
-            fullWidth
-            required
-            disabled={!!selectedUser}
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            helperText={!selectedUser ? "O usuário receberá um link neste e-mail para criar a sua senha." : ""}
-          />
-          <FormControl fullWidth>
-            <InputLabel>Perfil</InputLabel>
-            <Select
-              value={subPerfil}
-              label="Perfil"
-              onChange={(e) => setSubPerfil(e.target.value)}
-            >
-              <MenuItem value="Operacional">Operacional</MenuItem>
-              <MenuItem value="Admin">Administrador</MenuItem>
-            </Select>
-          </FormControl>
-          
-          <Box>
-            <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>Telas Permitidas</Typography>
-            <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
-              <FormGroup row>
+      {/* Diálogo de cadastro/edição */}
+      <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>{selectedUser ? 'Editar usuário' : 'Cadastrar usuário'}</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="textSecondary" sx={{ mb: 2.5 }}>
+            {selectedUser
+              ? 'O e-mail de acesso não pode ser alterado depois da criação da conta.'
+              : 'O usuário recebe um e-mail com o link para definir a própria senha.'}
+          </Typography>
+
+          <FormSection title="Dados do usuário">
+            <FormGrid columns={2}>
+              <TextField
+                label="Nome completo"
+                fullWidth
+                required
+                value={nome}
+                onChange={(e) => setNome(e.target.value)}
+              />
+              <TextField
+                label="E-mail"
+                type="email"
+                fullWidth
+                required
+                disabled={!!selectedUser}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                helperText={
+                  selectedUser
+                    ? 'E-mail não editável'
+                    : 'Um link de definição de senha será enviado para este endereço.'
+                }
+              />
+              <FormSpan span={2}>
+                <FormControl fullWidth>
+                  <InputLabel>Perfil</InputLabel>
+                  <Select
+                    value={subPerfil}
+                    label="Perfil"
+                    onChange={(e) => setSubPerfil(e.target.value)}
+                  >
+                    <MenuItem value="Operacional">Operacional</MenuItem>
+                    <MenuItem value="Admin">Administrador</MenuItem>
+                  </Select>
+                </FormControl>
+              </FormSpan>
+            </FormGrid>
+          </FormSection>
+
+          <Divider sx={{ my: 2.5 }} />
+
+          <FormSection
+            title="Telas permitidas"
+            description="Defina quais áreas do painel este usuário pode acessar."
+          >
+            <Paper variant="outlined" sx={{ p: 2 }}>
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' },
+                  columnGap: 2,
+                  rowGap: 0.5,
+                }}
+              >
                 {PERMISSIONS_LIST.map((perm) => (
                   <FormControlLabel
                     key={perm.value}
@@ -319,63 +446,38 @@ export default function AdminUsers() {
                       />
                     }
                     label={perm.label}
-                    sx={{ width: '45%' }}
                   />
                 ))}
-              </FormGroup>
+              </Box>
             </Paper>
-          </Box>
+          </FormSection>
         </DialogContent>
-        <DialogActions sx={{ p: 2.5 }}>
-          <Button onClick={() => setOpenDialog(false)} disabled={saving} sx={{ textTransform: 'none', fontWeight: 600 }}>
+        <DialogActions>
+          <Button color="inherit" onClick={() => setOpenDialog(false)} disabled={saving}>
             Cancelar
           </Button>
-          <Button
-            variant="contained"
-            onClick={handleSave}
-            disabled={saving}
-            sx={{
-              borderRadius: '8px',
-              textTransform: 'none',
-              fontWeight: 600,
-              background: 'linear-gradient(135deg, #0097A7, #00BCD4)',
-            }}
-          >
-            {saving ? <CircularProgress size={24} color="inherit" /> : 'Salvar'}
+          <Button variant="contained" onClick={handleSave} loading={saving}>
+            {selectedUser ? 'Salvar alterações' : 'Cadastrar usuário'}
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Delete Confirmation Dialog */}
-      <Dialog open={confirmDeleteOpen} onClose={() => setConfirmDeleteOpen(false)} maxWidth="xs" fullWidth sx={{ '& .MuiDialog-paper': { borderRadius: '16px' } }}>
-        <DialogTitle sx={{ fontFamily: '"Outfit", sans-serif', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
-          <WarningAmber sx={{ color: 'error.main' }} />
-          Confirmar Exclusão
-        </DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            Deseja realmente excluir o usuário <strong>{userToDelete?.nome}</strong>? O acesso dele será revogado imediatamente.
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions sx={{ p: 2.5, gap: 1 }}>
-          <Button
-            onClick={() => setConfirmDeleteOpen(false)}
-            disabled={deleting}
-            sx={{ textTransform: 'none', fontWeight: 600 }}
-          >
-            Cancelar
-          </Button>
-          <Button
-            variant="contained"
-            color="error"
-            onClick={handleDeleteConfirm}
-            disabled={deleting}
-            sx={{ borderRadius: '8px', textTransform: 'none', fontWeight: 600 }}
-          >
-            {deleting ? 'Excluindo...' : 'Sim, Excluir'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </Box>
+      {/* Confirmação de exclusão */}
+      <ConfirmDialog
+        open={confirmDeleteOpen}
+        title="Excluir usuário"
+        description={
+          <>
+            Deseja excluir o usuário <strong>{userToDelete?.nome}</strong>? O acesso dele será
+            revogado imediatamente.
+          </>
+        }
+        confirmLabel="Excluir usuário"
+        loading={deleting}
+        tone="error"
+        onConfirm={handleDeleteConfirm}
+        onClose={handleDeleteCancel}
+      />
+    </PageContainer>
   );
 }

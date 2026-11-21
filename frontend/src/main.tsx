@@ -30,33 +30,55 @@ const queryClient = new QueryClient({
 
 function ThemedApp() {
   const mode = useThemeStore((state) => state.mode);
-  const theme = getTheme(mode);
+
+  // Um único tema por modo — evita recriar o objeto a cada render.
+  const theme = React.useMemo(() => getTheme(mode), [mode]);
 
   React.useEffect(() => {
-    document.body.style.backgroundColor = theme.palette.background.default;
-  }, [theme]);
+    document.documentElement.style.colorScheme = mode;
+  }, [mode]);
 
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <App />
       <Toaster
-        position="top-right"
+        position="bottom-right"
+        gutter={10}
         toastOptions={{
           duration: 4000,
           style: {
-            background: mode === 'dark' ? '#1e293b' : '#1A2332',
-            color: '#ffffff',
-            borderRadius: '12px',
+            background: theme.palette.background.paper,
+            color: theme.palette.text.primary,
+            border: `1px solid ${theme.palette.divider}`,
+            borderRadius: 12,
+            boxShadow:
+              mode === 'dark'
+                ? '0 12px 32px rgba(0,0,0,0.55)'
+                : '0 12px 32px rgba(15,23,42,0.12)',
             fontFamily: '"Inter", sans-serif',
-            fontSize: '14px',
+            fontSize: '0.875rem',
+            fontWeight: 500,
             padding: '12px 16px',
+            maxWidth: 420,
           },
           success: {
-            iconTheme: { primary: '#10B981', secondary: '#fff' },
+            iconTheme: {
+              primary: theme.palette.success.main,
+              secondary: theme.palette.background.paper,
+            },
           },
           error: {
-            iconTheme: { primary: '#EF4444', secondary: '#fff' },
+            iconTheme: {
+              primary: theme.palette.error.main,
+              secondary: theme.palette.background.paper,
+            },
+          },
+          loading: {
+            iconTheme: {
+              primary: theme.palette.primary.main,
+              secondary: theme.palette.background.paper,
+            },
           },
         }}
       />

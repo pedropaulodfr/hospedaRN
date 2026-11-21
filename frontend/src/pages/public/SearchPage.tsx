@@ -1,17 +1,49 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
-  Box, Container, Grid, Typography, Button, TextField,
-  InputAdornment, Card, CardContent, CardMedia, Rating, Chip,
-  Skeleton, Slider, Checkbox, FormControlLabel, FormGroup,
-  IconButton, Paper, Divider, Drawer, useTheme, useMediaQuery,
-  Pagination
+  Box,
+  Grid,
+  Typography,
+  Button,
+  TextField,
+  Card,
+  CardContent,
+  CardMedia,
+  Rating,
+  Chip,
+  Slider,
+  Checkbox,
+  FormControlLabel,
+  FormGroup,
+  IconButton,
+  Divider,
+  Drawer,
+  Pagination,
+  useTheme,
+  useMediaQuery,
+  alpha,
 } from '@mui/material';
 import {
-  Search, LocationOn, Star, Wifi, Pool, LocalParking,
-  FreeBreakfast, FilterList, Map, List, Clear, Tv, AcUnit,
-  Kitchen, Pets, FitnessCenter, LocalBar, Restaurant, RoomService,
-  Home, Place
+  LocationOn,
+  Star,
+  Wifi,
+  Pool,
+  LocalParking,
+  FreeBreakfast,
+  FilterList,
+  Map,
+  List,
+  Clear,
+  Tv,
+  AcUnit,
+  Kitchen,
+  Pets,
+  FitnessCenter,
+  LocalBar,
+  Restaurant,
+  RoomService,
+  Home,
+  Close,
 } from '@mui/icons-material';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
@@ -20,9 +52,24 @@ import {
   citiesApi,
   amenitiesApi,
   accommodationTypesApi,
-  establishmentsApi
+  establishmentsApi,
 } from '../../services/api';
 import { useUIStore } from '../../stores/uiStore';
+import {
+  PageContainer,
+  PageHeader,
+  SectionCard,
+  DataToolbar,
+  DataToolbarGroup,
+  SearchField,
+  EmptyState,
+  ErrorState,
+  CardGridSkeleton,
+  EmptySearchIcon,
+  MediaFallback,
+} from '../../components/common';
+import { FavoriteButton } from '../../components/favorites/FavoriteButton';
+import { formatCurrency } from '../../theme/tokens';
 
 // Fix Leaflet marker icon asset paths in Vite
 const DefaultIcon = L.icon({
@@ -98,7 +145,7 @@ export default function SearchPage() {
 
   // Local UI states
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
-  const [showMapOnMobile, setShowMapOnMobile] = useState(false);
+  const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
   const [page, setPage] = useState(1);
   const [priceRange, setPriceRange] = useState<number[]>([0, 1000]);
 
@@ -167,7 +214,12 @@ export default function SearchPage() {
   };
 
   // Query establishments
-  const { data: resultsData, isLoading: loadingResults } = useQuery({
+  const {
+    data: resultsData,
+    isLoading: loadingResults,
+    isError: errorResults,
+    refetch: refetchResults,
+  } = useQuery({
     queryKey: ['search-establishments', apiParams],
     queryFn: () => establishmentsApi.getAll(apiParams),
     select: (res) => res.data,
@@ -223,6 +275,13 @@ export default function SearchPage() {
     setPage(1);
   };
 
+  const handlePriceClear = () => {
+    setSearchFilters({ minPrice: undefined, maxPrice: undefined });
+    updateUrlParams({ minPrice: undefined, maxPrice: undefined });
+    setPriceRange([0, 1000]);
+    setPage(1);
+  };
+
   const handleRatingChange = (rating: number | null) => {
     const val = rating === null ? undefined : rating;
     setSearchFilters({ minRating: val });
@@ -261,52 +320,81 @@ export default function SearchPage() {
     setPriceRange([0, 1000]);
   };
 
-  // Render the filters form
-  const renderFiltersContent = () => (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      {/* Top action header for filters */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Typography variant="h6" sx={{ fontWeight: 700, color: 'text.primary' }}>
-          Filtros
-        </Typography>
-        <Button
-          size="small"
-          onClick={handleClearFilters}
-          startIcon={<Clear />}
-          sx={{ color: 'secondary.main' }}
-        >
-          Limpar
-        </Button>
-      </Box>
+  const hasActiveFilters = Boolean(
+    searchFilters.search ||
+      searchFilters.cityId ||
+      searchFilters.minPrice !== undefined ||
+      searchFilters.maxPrice !== undefined ||
+      searchFilters.minRating !== undefined ||
+      searchFilters.amenityIds ||
+      searchFilters.accommodationTypeIds
+  );
 
-      {/* Text Search */}
-      <Box>
-        <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
-          Buscar por nome/palavra-chave
-        </Typography>
-        <TextField
-          fullWidth
-          size="small"
-          placeholder="Ex: Pousada do Sol, Pipa..."
-          value={searchFilters.search || ''}
-          onChange={(e) => handleTextSearch(e.target.value)}
-          slotProps={{
-            input: {
-              startAdornment: (
-                <InputAdornment position="start">
-                  <Search fontSize="small" sx={{ color: 'text.secondary' }} />
-                </InputAdornment>
-              ),
-            }
-          }}
-        />
-      </Box>
+  // Chips removíveis dos filtros ativos (fonte: estado real da busca)
+  const activeFilterChips: { key: string; label: string; onDelete: () => void }[] = [];
+  if (searchFilters.search) {
+    activeFilterChips.push({
+      key: 'search',
+      label: `Busca: ${searchFilters.search}`,
+      onDelete: () => handleTextSearch(''),
+    });
+  }
+  if (searchFilters.cityId) {
+    const city = cities?.find((c: any) => c.id === searchFilters.cityId);
+    activeFilterChips.push({
+      key: 'city',
+      label: `Cidade: ${city?.nome ?? 'selecionada'}`,
+      onDelete: () => handleCityChange('all'),
+    });
+  }
+  if (searchFilters.minPrice !== undefined || searchFilters.maxPrice !== undefined) {
+    const min = searchFilters.minPrice ?? 0;
+    const max = searchFilters.maxPrice;
+    activeFilterChips.push({
+      key: 'price',
+      label:
+        max !== undefined
+          ? `Diária: ${formatCurrency(min)} – ${formatCurrency(max)}`
+          : `Diária a partir de ${formatCurrency(min)}`,
+      onDelete: handlePriceClear,
+    });
+  }
+  if (searchFilters.minRating !== undefined) {
+    activeFilterChips.push({
+      key: 'rating',
+      label: `Nota ${searchFilters.minRating}+`,
+      onDelete: () => handleRatingChange(null),
+    });
+  }
+  (searchFilters.amenityIds ? searchFilters.amenityIds.split(',').filter(Boolean) : []).forEach(
+    (id: string) => {
+      const nome = amenities?.find((a: any) => a.id === id)?.nome;
+      activeFilterChips.push({
+        key: `amenity-${id}`,
+        label: nome ?? 'Comodidade',
+        onDelete: () => handleAmenityToggle(id),
+      });
+    }
+  );
+  (
+    searchFilters.accommodationTypeIds
+      ? searchFilters.accommodationTypeIds.split(',').filter(Boolean)
+      : []
+  ).forEach((id: string) => {
+    const nome = accommodationTypes?.find((t: any) => t.id === id)?.nome;
+    activeFilterChips.push({
+      key: `type-${id}`,
+      label: nome ?? 'Tipo de acomodação',
+      onDelete: () => handleAccommodationTypeToggle(id),
+    });
+  });
 
-      <Divider />
-
+  // Render the filters form (compartilhado entre sidebar desktop e drawer mobile)
+  const renderFiltersFields = () => (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
       {/* City filter */}
       <Box>
-        <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
+        <Typography variant="subtitle2" component="h3" sx={{ mb: 1 }}>
           Cidade
         </Typography>
         <TextField
@@ -317,8 +405,8 @@ export default function SearchPage() {
           onChange={(e) => handleCityChange(e.target.value)}
           slotProps={{
             select: {
-              native: true
-            }
+              native: true,
+            },
           }}
         >
           <option value="all">Todas as cidades</option>
@@ -334,7 +422,7 @@ export default function SearchPage() {
 
       {/* Price Slider */}
       <Box>
-        <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
+        <Typography variant="subtitle2" component="h3" sx={{ mb: 0.5 }}>
           Preço base por diária
         </Typography>
         <Box sx={{ px: 1 }}>
@@ -347,14 +435,16 @@ export default function SearchPage() {
             max={1500}
             step={50}
             color="primary"
+            aria-label="Faixa de preço por diária"
           />
         </Box>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
-          <Typography variant="caption" color="text.secondary">
-            R$ {priceRange[0]}
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 0.5 }}>
+          <Typography variant="caption" color="textSecondary">
+            {formatCurrency(priceRange[0])}
           </Typography>
-          <Typography variant="caption" color="text.secondary">
-            R$ {priceRange[1] === 1500 ? 'R$ 1500+' : `R$ ${priceRange[1]}`}
+          <Typography variant="caption" color="textSecondary">
+            {formatCurrency(priceRange[1])}
+            {priceRange[1] === 1500 ? '+' : ''}
           </Typography>
         </Box>
       </Box>
@@ -363,7 +453,7 @@ export default function SearchPage() {
 
       {/* Rating Filter */}
       <Box>
-        <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1.5 }}>
+        <Typography variant="subtitle2" component="h3" sx={{ mb: 1 }}>
           Avaliação mínima
         </Typography>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
@@ -375,20 +465,18 @@ export default function SearchPage() {
                 variant={isSelected ? 'contained' : 'outlined'}
                 size="small"
                 onClick={() => handleRatingChange(isSelected ? null : stars)}
+                aria-pressed={isSelected}
                 sx={{
                   justifyContent: 'flex-start',
-                  borderColor: isSelected ? 'primary.main' : 'rgba(0,0,0,0.08)',
-                  color: isSelected ? 'white' : 'text.primary',
-                  bgcolor: isSelected ? 'primary.main' : 'transparent',
-                  '&:hover': {
-                    bgcolor: isSelected ? 'primary.dark' : 'rgba(0,151,167,0.04)',
-                    borderColor: 'primary.main',
-                  },
+                  width: '100%',
+                  gap: 1,
+                  px: 1.25,
+                  color: isSelected ? 'primary.contrastText' : 'text.primary',
                 }}
               >
-                <Rating value={stars} readOnly size="small" sx={{ mr: 1 }} />
-                <Typography variant="caption" sx={{ fontWeight: 500 }}>
-                  {stars === 5 ? '5 estrelas' : `Ou mais`}
+                <Rating value={stars} readOnly size="small" />
+                <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                  {stars}+ estrelas
                 </Typography>
               </Button>
             );
@@ -400,10 +488,12 @@ export default function SearchPage() {
 
       {/* Accommodation Types */}
       <Box>
-        <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
+        <Typography variant="subtitle2" component="h3" sx={{ mb: 1 }}>
           Tipos de acomodação
         </Typography>
-        <FormGroup sx={{ maxHeight: 200, overflowY: 'auto' }}>
+        {/* flexWrap: nowrap — o padrão do MUI é `wrap`, que com maxHeight
+            quebra em colunas e estoura a largura do painel de filtros. */}
+        <FormGroup sx={{ maxHeight: 180, overflowY: 'auto', flexWrap: 'nowrap' }}>
           {accommodationTypes?.map((type: any) => {
             const isChecked = searchFilters.accommodationTypeIds
               ?.split(',')
@@ -419,7 +509,7 @@ export default function SearchPage() {
                   />
                 }
                 label={
-                  <Typography variant="body2" color="text.primary">
+                  <Typography variant="body2" color="textPrimary">
                     {type.nome}
                   </Typography>
                 }
@@ -433,10 +523,10 @@ export default function SearchPage() {
 
       {/* Amenities (Vantagens) */}
       <Box>
-        <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
-          Comodidades & Vantagens
+        <Typography variant="subtitle2" component="h3" sx={{ mb: 1 }}>
+          Comodidades & vantagens
         </Typography>
-        <FormGroup sx={{ maxHeight: 240, overflowY: 'auto' }}>
+        <FormGroup sx={{ maxHeight: 220, overflowY: 'auto', flexWrap: 'nowrap' }}>
           {amenities?.map((amenity: any) => {
             const isChecked = searchFilters.amenityIds?.split(',').includes(amenity.id);
             return (
@@ -452,7 +542,7 @@ export default function SearchPage() {
                 label={
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     {AMENITY_ICONS[amenity.nome] || <Home fontSize="small" />}
-                    <Typography variant="body2" color="text.primary">
+                    <Typography variant="body2" color="textPrimary">
                       {amenity.nome}
                     </Typography>
                   </Box>
@@ -466,145 +556,170 @@ export default function SearchPage() {
   );
 
   return (
-    <Box sx={{ bgcolor: 'background.default', minHeight: '100vh', pt: { xs: 8, md: 10 } }}>
-      <Container maxWidth="xl" sx={{ py: 4 }}>
-        <Grid container spacing={3}>
-          {/* ================= SIDEBAR FILTERS (DESKTOP) ================= */}
-          {!isMobile && (
-            <Grid size={{ xs: 12, md: 3 }}>
-              <Paper
-                elevation={1}
-                sx={{
-                  p: 3,
-                  borderRadius: 4,
-                  border: '1px solid rgba(0,0,0,0.05)',
-                  position: 'sticky',
-                  top: 96,
-                  maxHeight: 'calc(100vh - 128px)',
-                  overflowY: 'auto',
-                }}
+    <PageContainer maxWidth="wide">
+      <PageHeader
+        overline="Busca"
+        title="Hospedagens no Rio Grande do Norte"
+        subtitle="Compare cidades, comodidades e diárias para encontrar a estadia certa."
+        actions={
+          <>
+            {isMobile && (
+              <Button
+                variant="outlined"
+                startIcon={<FilterList />}
+                onClick={() => setMobileFiltersOpen(true)}
               >
-                {renderFiltersContent()}
-              </Paper>
-            </Grid>
-          )}
+                Filtros
+                {activeFilterChips.length > 0 ? ` (${activeFilterChips.length})` : ''}
+              </Button>
+            )}
+            <Button
+              variant="outlined"
+              startIcon={viewMode === 'map' ? <List /> : <Map />}
+              onClick={() => setViewMode(viewMode === 'map' ? 'list' : 'map')}
+            >
+              {viewMode === 'map' ? 'Ver lista' : 'Ver mapa'}
+            </Button>
+          </>
+        }
+      />
 
-          {/* ================= RESULTS LIST ================= */}
-          <Grid size={{ xs: 12, md: showMapOnMobile ? 12 : 5, lg: showMapOnMobile ? 12 : 5 }}>
-            {/* Header info bar */}
-            <Box
+      <DataToolbar>
+        <DataToolbarGroup>
+          <SearchField
+            value={searchFilters.search || ''}
+            onChange={handleTextSearch}
+            placeholder="Buscar por nome, cidade ou palavra-chave"
+            width={380}
+          />
+        </DataToolbarGroup>
+        <Typography variant="body2" color="textSecondary" component="p">
+          {loadingResults
+            ? 'Buscando hospedagens…'
+            : `${totalItems} ${totalItems === 1 ? 'hospedagem encontrada' : 'hospedagens encontradas'}`}
+        </Typography>
+      </DataToolbar>
+
+      {activeFilterChips.length > 0 && (
+        <Box
+          sx={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            gap: 1,
+            mb: 2.5,
+          }}
+        >
+          {activeFilterChips.map((chip) => (
+            <Chip
+              key={chip.key}
+              label={chip.label}
+              size="small"
+              variant="outlined"
+              onDelete={chip.onDelete}
+              sx={{ bgcolor: 'background.paper' }}
+            />
+          ))}
+          <Button size="small" startIcon={<Clear />} onClick={handleClearFilters}>
+            Limpar filtros
+          </Button>
+        </Box>
+      )}
+
+      <Grid container spacing={3}>
+        {/* ================= SIDEBAR FILTERS (DESKTOP) ================= */}
+        {!isMobile && (
+          <Grid size={{ xs: 12, md: 3 }}>
+            <SectionCard
+              title="Filtros"
+              action={
+                hasActiveFilters ? (
+                  <Button size="small" startIcon={<Clear />} onClick={handleClearFilters}>
+                    Limpar
+                  </Button>
+                ) : undefined
+              }
+              contentSx={{ p: 2.5 }}
               sx={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                mb: 3,
-                flexWrap: 'wrap',
-                gap: 2,
+                position: 'sticky',
+                top: 96,
+                maxHeight: 'calc(100vh - 128px)',
+                overflowY: 'auto',
               }}
             >
-              <Box>
-                <Typography variant="h4" sx={{ fontWeight: 800 }}>
-                  Hospedagens no RN
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  {loadingResults ? (
-                    <Skeleton width={180} />
-                  ) : (
-                    `${totalItems} opções encontradas para sua viagem`
-                  )}
-                </Typography>
-              </Box>
-
-              {/* Mobile Filter & Map Toggle Actions */}
-              <Box sx={{ display: 'flex', gap: 1 }}>
-                {isMobile && (
-                  <Button
-                    variant="outlined"
-                    startIcon={<FilterList />}
-                    onClick={() => setMobileFiltersOpen(true)}
-                    size="small"
-                  >
-                    Filtros
-                  </Button>
-                )}
-
-                {isMobile && (
-                  <Button
-                    variant="contained"
-                    startIcon={showMapOnMobile ? <List /> : <Map />}
-                    onClick={() => setShowMapOnMobile(!showMapOnMobile)}
-                    size="small"
-                  >
-                    {showMapOnMobile ? 'Ver Lista' : 'Ver Mapa'}
-                  </Button>
-                )}
-              </Box>
-            </Box>
-
-            {/* Results Grid */}
-            {showMapOnMobile ? (
-              // Map container for mobile when active
-              <Box sx={{ height: '70vh', borderRadius: 4, overflow: 'hidden', border: '1px solid rgba(0,0,0,0.08)' }}>
-                {renderMap()}
-              </Box>
-            ) : (
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                {loadingResults
-                  ? [...Array(3)].map((_, i) => (
-                      <Card key={i} sx={{ display: 'flex', height: { xs: 'auto', sm: 200 }, flexDirection: { xs: 'column', sm: 'row' } }}>
-                        <Skeleton variant="rectangular" width={220} height="100%" />
-                        <CardContent sx={{ flex: 1, p: 3 }}>
-                          <Skeleton width="60%" height={32} sx={{ mb: 2 }} />
-                          <Skeleton width="40%" sx={{ mb: 1 }} />
-                          <Skeleton width="80%" sx={{ mb: 2 }} />
-                          <Skeleton width="30%" height={40} />
-                        </CardContent>
-                      </Card>
-                    ))
-                  : establishments.length === 0
-                  ? renderEmptyState()
-                  : establishments.map((est: any) => renderEstablishmentCard(est))}
-
-                {/* Pagination */}
-                {totalPages > 1 && (
-                  <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
-                    <Pagination
-                      count={totalPages}
-                      page={page}
-                      onChange={(_e, p) => {
-                        setPage(p);
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
-                      }}
-                      color="primary"
-                      size="large"
-                    />
-                  </Box>
-                )}
-              </Box>
-            )}
+              {renderFiltersFields()}
+            </SectionCard>
           </Grid>
+        )}
 
-          {/* ================= INTERACTIVE MAP VIEW (DESKTOP) ================= */}
-          {!isMobile && (
-            <Grid size={{ xs: 12, md: 4, lg: 4 }}>
-              <Box
-                sx={{
-                  position: 'sticky',
-                  top: 96,
-                  height: 'calc(100vh - 128px)',
-                  borderRadius: 4,
-                  overflow: 'hidden',
-                  boxShadow: '0 4px 24px rgba(0,0,0,0.08)',
-                  border: '1px solid rgba(0,0,0,0.05)',
-                  bgcolor: 'background.paper',
+        {/* ================= RESULTS ================= */}
+        <Grid size={{ xs: 12, md: 9 }}>
+          {viewMode === 'map' ? (
+            <Box
+              sx={{
+                height: { xs: '62vh', md: 'calc(100vh - 220px)' },
+                minHeight: 420,
+                borderRadius: 2,
+                overflow: 'hidden',
+                border: '1px solid',
+                borderColor: 'divider',
+                bgcolor: 'background.paper',
+              }}
+            >
+              {renderMap()}
+            </Box>
+          ) : loadingResults ? (
+            <CardGridSkeleton count={6} height={340} />
+          ) : errorResults ? (
+            <ErrorState
+              title="Não foi possível carregar as hospedagens"
+              description="Ocorreu uma falha ao buscar os resultados. Verifique sua conexão e tente novamente."
+              onRetry={() => refetchResults()}
+            />
+          ) : establishments.length === 0 ? (
+            <EmptyState
+              icon={EmptySearchIcon}
+              title="Nenhuma hospedagem encontrada"
+              description="Tente ajustar os filtros ou buscar por outra cidade, comodidade ou faixa de preço."
+              action={
+                <Button variant="contained" onClick={handleClearFilters}>
+                  Limpar todos os filtros
+                </Button>
+              }
+            />
+          ) : (
+            <Box
+              sx={{
+                display: 'grid',
+                gap: 3,
+                gridTemplateColumns: {
+                  xs: '1fr',
+                  sm: 'repeat(2, minmax(0, 1fr))',
+                  lg: 'repeat(3, minmax(0, 1fr))',
+                },
+              }}
+            >
+              {establishments.map((est: any) => renderEstablishmentCard(est))}
+            </Box>
+          )}
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
+              <Pagination
+                count={totalPages}
+                page={page}
+                onChange={(_e, p) => {
+                  setPage(p);
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
                 }}
-              >
-                {renderMap()}
-              </Box>
-            </Grid>
+                color="primary"
+                shape="rounded"
+              />
+            </Box>
           )}
         </Grid>
-      </Container>
+      </Grid>
 
       {/* ================= MOBILE FILTERS DRAWER ================= */}
       <Drawer
@@ -616,55 +731,60 @@ export default function SearchPage() {
             sx: {
               borderTopLeftRadius: 20,
               borderTopRightRadius: 20,
-              p: 3,
-              maxHeight: '85vh',
-              overflowY: 'auto',
+              maxHeight: '88vh',
+              display: 'flex',
+              flexDirection: 'column',
             },
           },
         }}
       >
-        {renderFiltersContent()}
-        <Button
-          variant="contained"
-          fullWidth
-          onClick={() => setMobileFiltersOpen(false)}
-          sx={{ mt: 4, py: 1.5 }}
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            px: 3,
+            py: 2,
+            borderBottom: '1px solid',
+            borderColor: 'divider',
+            flexShrink: 0,
+          }}
         >
-          Aplicar Filtros
-        </Button>
-      </Drawer>
-    </Box>
-  );
+          <Typography variant="h6" component="h2">
+            Filtros
+          </Typography>
+          <IconButton aria-label="Fechar filtros" onClick={() => setMobileFiltersOpen(false)}>
+            <Close />
+          </IconButton>
+        </Box>
 
-  // Sub-render: Empty state illustration
-  function renderEmptyState() {
-    return (
-      <Paper
-        elevation={0}
-        sx={{
-          p: 6,
-          textAlign: 'center',
-          borderRadius: 4,
-          border: '1px dashed rgba(0,0,0,0.15)',
-          bgcolor: 'transparent',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-        }}
-      >
-        <LocationOn sx={{ fontSize: 60, color: 'text.secondary', opacity: 0.3, mb: 2 }} />
-        <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>
-          Nenhuma hospedagem encontrada
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 360, mb: 3 }}>
-          Tente ajustar os filtros ou digitar um termo diferente na busca.
-        </Typography>
-        <Button variant="contained" size="small" onClick={handleClearFilters}>
-          Limpar todos os filtros
-        </Button>
-      </Paper>
-    );
-  }
+        <Box sx={{ px: 3, py: 2.5, overflowY: 'auto', flex: 1 }}>{renderFiltersFields()}</Box>
+
+        <Box
+          sx={{
+            display: 'flex',
+            gap: 1,
+            px: 3,
+            py: 2,
+            borderTop: '1px solid',
+            borderColor: 'divider',
+            flexShrink: 0,
+          }}
+        >
+          <Button variant="outlined" onClick={handleClearFilters} sx={{ flex: 1 }}>
+            Limpar
+          </Button>
+          <Button
+            variant="contained"
+            onClick={() => setMobileFiltersOpen(false)}
+            sx={{ flex: 1 }}
+          >
+            Aplicar filtros
+          </Button>
+        </Box>
+      </Drawer>
+    </PageContainer>
+  );
 
   // Sub-render: Map component
   function renderMap() {
@@ -688,19 +808,24 @@ export default function SearchPage() {
               ? Math.min(...est.quartos.map((r: any) => Number(r.precoBase)))
               : null;
             const coverPhoto = est.fotos?.find((p: any) => p.isCapa)?.url
-              || est.fotos?.[0]?.url
-              || 'https://placehold.co/200x200/0097A7/FFFFFF?text=H';
+              || est.fotos?.[0]?.url;
 
             return (
               <Marker key={est.id} position={[Number(est.latitude), Number(est.longitude)]}>
                 <Popup>
                   <Box sx={{ width: 180, display: 'flex', flexDirection: 'column', gap: 1 }}>
-                    <CardMedia
-                      component="img"
-                      image={coverPhoto}
-                      alt={est.nome}
-                      sx={{ height: 100, borderRadius: 1.5, objectFit: 'cover' }}
-                    />
+                    <Box sx={{ height: 100, borderRadius: 1.5, overflow: 'hidden' }}>
+                      {coverPhoto ? (
+                        <CardMedia
+                          component="img"
+                          image={coverPhoto}
+                          alt={est.nome}
+                          sx={{ height: '100%', width: '100%', objectFit: 'cover' }}
+                        />
+                      ) : (
+                        <MediaFallback variant="establishment" label={est.nome} />
+                      )}
+                    </Box>
                     <Typography variant="subtitle2" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
                       {est.nome}
                     </Typography>
@@ -712,10 +837,10 @@ export default function SearchPage() {
                     </Box>
                     {minPrice !== null ? (
                       <Typography variant="caption" sx={{ fontWeight: 700, color: 'primary.main' }}>
-                        Diárias a partir de R$ {minPrice}
+                        Diárias a partir de {formatCurrency(minPrice)}
                       </Typography>
                     ) : (
-                      <Typography variant="caption" color="text.secondary">
+                      <Typography variant="caption" color="textSecondary">
                         Preço sob consulta
                       </Typography>
                     )}
@@ -743,123 +868,121 @@ export default function SearchPage() {
       : null;
 
     const coverPhoto = est.fotos?.find((p: any) => p.isCapa)?.url
-      || est.fotos?.[0]?.url
-      || 'https://placehold.co/500x300/0097A7/FFFFFF?text=HospedaRN';
+      || est.fotos?.[0]?.url;
 
     // Extract unique room type names for display
     const roomTypesList = Array.from(
       new Set(est.quartos?.map((r: any) => r.tipoAcomodacao?.nome).filter(Boolean))
-    );
+    ) as string[];
 
     return (
       <Card
         key={est.id}
-        sx={{
-          display: 'flex',
-          flexDirection: { xs: 'column', sm: 'row' },
-          height: { xs: 'auto', sm: 240 },
-          borderRadius: 4,
-          overflow: 'hidden',
-          boxShadow: '0 2px 12px rgba(0,0,0,0.05)',
-          border: '1px solid rgba(0,0,0,0.05)',
-          '&:hover': {
-            boxShadow: '0 8px 24px rgba(0,0,0,0.1)',
-            transform: 'translateY(-2px)',
-          },
-          transition: 'all 0.3s ease',
-          cursor: 'pointer',
+        role="link"
+        tabIndex={0}
+        aria-label={`Ver detalhes de ${est.nome}`}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            navigate(`/hospedagem/${est.id}`);
+          }
         }}
         onClick={() => navigate(`/hospedagem/${est.id}`)}
+        sx={{
+          display: 'flex',
+          flexDirection: 'column',
+          height: '100%',
+          overflow: 'hidden',
+          cursor: 'pointer',
+          transition: 'border-color 180ms, box-shadow 180ms, transform 180ms',
+          '&:hover': {
+            borderColor: 'primary.main',
+            boxShadow: (t) => `0 8px 24px ${alpha(t.palette.text.primary, 0.08)}`,
+            transform: 'translateY(-2px)',
+          },
+        }}
       >
         {/* Cover Photo */}
-        <Box sx={{ width: { xs: '100%', sm: 220 }, height: { xs: 180, sm: '100%' }, position: 'relative', flexShrink: 0 }}>
-          <CardMedia
-            component="img"
-            image={coverPhoto}
-            alt={est.nome}
-            sx={{ height: '100%', width: '100%', objectFit: 'cover' }}
-          />
-          <Chip
-            label={est.cidade?.nome}
-            icon={<LocationOn sx={{ fontSize: '12px !important' }} />}
-            size="small"
-            sx={{
-              position: 'absolute',
-              top: 12,
-              left: 12,
-              bgcolor: 'rgba(0,0,0,0.7)',
-              color: 'white',
-              backdropFilter: 'blur(4px)',
-              '& .MuiChip-icon': { color: 'primary.light' },
-            }}
-          />
+        <Box sx={{ position: 'relative', height: 190, flexShrink: 0 }}>
+          {coverPhoto ? (
+            <CardMedia
+              component="img"
+              image={coverPhoto}
+              alt={est.nome}
+              sx={{ height: '100%', width: '100%', objectFit: 'cover' }}
+            />
+          ) : (
+            <MediaFallback variant="establishment" label={est.nome} />
+          )}
+          <FavoriteButton estabelecimentoId={est.id} nome={est.nome} />
+          {est.cidade?.nome && (
+            <Chip
+              label={est.cidade.nome}
+              icon={<LocationOn sx={{ fontSize: 14 }} />}
+              size="small"
+              sx={{
+                position: 'absolute',
+                top: 12,
+                left: 12,
+                bgcolor: (t) => alpha(t.palette.common.black, 0.66),
+                color: 'common.white',
+                '& .MuiChip-icon': { color: 'common.white' },
+              }}
+            />
+          )}
         </Box>
 
         {/* Content details */}
-        <CardContent
-          sx={{
-            flex: 1,
-            p: 3,
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'space-between',
-            height: '100%',
-          }}
-        >
-          <Box>
-            {/* Title & Rating */}
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1, gap: 1 }}>
-              <Typography variant="h6" sx={{ fontWeight: 800, lineHeight: 1.2 }}>
-                {est.nome}
+        <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 1 }}>
+          <Box
+            sx={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'flex-start',
+              gap: 1,
+            }}
+          >
+            <Typography
+              variant="h6"
+              component="h3"
+              sx={{
+                display: '-webkit-box',
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: 'vertical',
+                overflow: 'hidden',
+              }}
+            >
+              {est.nome}
+            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25, flexShrink: 0 }}>
+              <Star sx={{ fontSize: 16, color: 'warning.main' }} />
+              <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                {Number(est.notaMedia).toFixed(1)}
               </Typography>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
-                <Star sx={{ fontSize: 16, color: 'warning.main' }} />
-                <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                  {Number(est.notaMedia).toFixed(1)}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  ({est.totalAvaliacoes})
-                </Typography>
-              </Box>
+              <Typography variant="caption" color="textSecondary">
+                ({est.totalAvaliacoes})
+              </Typography>
             </Box>
+          </Box>
 
-            {/* Room type label / chips */}
-            {roomTypesList.length > 0 ? (
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5, fontWeight: 500 }}>
-                {roomTypesList.join(' • ')}
-              </Typography>
-            ) : (
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
-                Hospedagem
-              </Typography>
+          <Typography variant="caption" color="textSecondary">
+            {roomTypesList.length > 0 ? roomTypesList.join(' • ') : 'Hospedagem'}
+          </Typography>
+
+          <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+            {est.comodidades?.slice(0, 3).map((ea: any) => (
+              <Chip
+                key={ea.comodidade.id}
+                icon={AMENITY_ICONS[ea.comodidade.nome] || <Home fontSize="small" />}
+                label={ea.comodidade.nome}
+                size="small"
+                variant="outlined"
+                sx={{ '& .MuiChip-icon': { color: 'primary.main' } }}
+              />
+            ))}
+            {est.comodidades?.length > 3 && (
+              <Chip label={`+${est.comodidades.length - 3}`} size="small" variant="outlined" />
             )}
-
-            {/* Amenities summary icons */}
-            <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', mb: 2 }}>
-              {est.comodidades?.slice(0, 4).map((ea: any) => (
-                <Chip
-                  key={ea.comodidade.id}
-                  icon={AMENITY_ICONS[ea.comodidade.nome] || <Home fontSize="small" />}
-                  label={ea.comodidade.nome}
-                  size="small"
-                  variant="outlined"
-                  sx={{
-                    borderColor: 'rgba(0,0,0,0.06)',
-                    fontSize: '0.7rem',
-                    bgcolor: 'rgba(0,151,167,0.02)',
-                    '& .MuiChip-icon': { color: 'primary.main' }
-                  }}
-                />
-              ))}
-              {est.comodidades?.length > 4 && (
-                <Chip
-                  label={`+${est.comodidades.length - 4}`}
-                  size="small"
-                  variant="outlined"
-                  sx={{ borderColor: 'rgba(0,0,0,0.06)', fontSize: '0.7rem' }}
-                />
-              )}
-            </Box>
           </Box>
 
           {/* Pricing & CTA */}
@@ -868,20 +991,23 @@ export default function SearchPage() {
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'flex-end',
+              gap: 1,
+              mt: 'auto',
               pt: 1.5,
-              borderTop: '1px solid rgba(0,0,0,0.05)',
+              borderTop: '1px solid',
+              borderColor: 'divider',
             }}
           >
             <Box>
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+              <Typography variant="caption" color="textSecondary" sx={{ display: 'block' }}>
                 Diárias a partir de
               </Typography>
               {minPrice !== null ? (
-                <Typography variant="h5" color="primary.main" sx={{ fontWeight: 800 }}>
-                  R$ {minPrice}
+                <Typography variant="h6" color="primary">
+                  {formatCurrency(minPrice)}
                 </Typography>
               ) : (
-                <Typography variant="subtitle2" color="text.secondary" sx={{ fontWeight: 700 }}>
+                <Typography variant="subtitle2" color="textSecondary">
                   Sob consulta
                 </Typography>
               )}
@@ -893,7 +1019,6 @@ export default function SearchPage() {
                 e.stopPropagation();
                 navigate(`/hospedagem/${est.id}`);
               }}
-              sx={{ borderRadius: 2 }}
             >
               Ver detalhes
             </Button>

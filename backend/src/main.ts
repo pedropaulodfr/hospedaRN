@@ -12,18 +12,43 @@ async function bootstrap() {
 
   const configService = app.get(ConfigService);
   const port = configService.get<number>('PORT', 3000);
-  const frontendUrl = configService.get<string>('FRONTEND_URL', 'http://localhost:5173');
+  const frontendUrls = (configService.get<string>('FRONTEND_URL', '') || '')
+    .split(',')
+    .map((url) => url.trim().replace(/\/+$/, ''))
+    .filter(Boolean);
   const apiPrefix = configService.get<string>('API_PREFIX', 'api');
 
   // Security
   app.use(helmet());
 
-  // CORS
+  // CORS — produção (Vercel), previews e desenvolvimento local
+  const allowedOrigins = new Set([
+    'http://localhost:5173',
+    'http://localhost:3000',
+    'http://127.0.0.1:5173',
+    ...frontendUrls,
+  ]);
+
   app.enableCors({
-    origin: [frontendUrl, 'http://localhost:5173', 'http://localhost:3000'],
+    origin: (origin, callback) => {
+      // Requisições server-to-server (curl, healthcheck) não enviam Origin
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.has(origin)) return callback(null, true);
+
+      try {
+        const { protocol, hostname } = new URL(origin);
+        if (protocol === 'https:' && (hostname === 'hospeda-rn.vercel.app' || hostname.endsWith('.vercel.app'))) {
+          return callback(null, true);
+        }
+      } catch {
+        // Origin malformada: cai no bloqueio abaixo
+      }
+
+      return callback(null, false);
+    },
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     credentials: true,
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Refresh-Token'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Refresh-Token', 'x-usuario-id'],
   });
 
   // Global prefix

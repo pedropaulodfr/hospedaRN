@@ -41,3 +41,7 @@ implementations/
 
 # Tools / MCP binaries
 .tools/
+
+# Agent orchestration artifacts (generated)
+.agent-panel/
+agent-panel.html

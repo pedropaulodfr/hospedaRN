@@ -1,13 +1,42 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
-  Box, Typography, Paper, Button, IconButton,
-  Dialog, DialogTitle, DialogContent, DialogActions, TextField,
-  CircularProgress, List, ListItem, ListItemText, ListItemSecondaryAction,
-  Collapse,
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
+  Box,
+  Button,
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  Divider,
+  IconButton,
+  Stack,
+  TextField,
+  Tooltip,
+  Typography,
 } from '@mui/material';
 import {
-  Add, Edit, Delete, ExpandMore, ExpandLess, ArrowUpward, ArrowDownward,
+  Add,
+  ArrowDownward,
+  ArrowUpward,
+  DeleteOutlined,
+  EditOutlined,
+  ExpandMore,
+  Rule,
 } from '@mui/icons-material';
+import {
+  ConfirmDialog,
+  EmptyState,
+  ErrorState,
+  FormActions,
+  FormGrid,
+  FormSection,
+  FormSpan,
+  PageContainer,
+  PageHeader,
+  PageLoading,
+  SectionCard,
+} from '../../components/common';
 import { regrasApi, establishmentsApi } from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
 import toast from 'react-hot-toast';
@@ -26,11 +55,16 @@ interface Secao {
   topicos: Topico[];
 }
 
+function plural(count: number, singular: string, pluralForm: string) {
+  return `${count} ${count === 1 ? singular : pluralForm}`;
+}
+
 export default function EstRegras() {
   const { user } = useAuthStore();
 
   const [secoes, setSecoes] = useState<Secao[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [estabelecimentoId, setEstabelecimentoId] = useState<string>('');
 
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -38,12 +72,18 @@ export default function EstRegras() {
   const [dialogSecao, setDialogSecao] = useState(false);
   const [editingSecao, setEditingSecao] = useState<Secao | null>(null);
   const [secaoNome, setSecaoNome] = useState('');
+  const [savingSecao, setSavingSecao] = useState(false);
 
   const [dialogTopico, setDialogTopico] = useState(false);
   const [editingTopico, setEditingTopico] = useState<Topico | null>(null);
   const [topicoSecaoId, setTopicoSecaoId] = useState('');
   const [topicoLabel, setTopicoLabel] = useState('');
   const [topicoValor, setTopicoValor] = useState('');
+  const [savingTopico, setSavingTopico] = useState(false);
+
+  const [secaoToDelete, setSecaoToDelete] = useState<Secao | null>(null);
+  const [topicoToDelete, setTopicoToDelete] = useState<Topico | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     const init = async () => {
@@ -69,11 +109,13 @@ export default function EstRegras() {
   const load = async () => {
     if (!estabelecimentoId) return;
     try {
+      setError(false);
       const res = await regrasApi.getByEstablishment(estabelecimentoId);
       const items = res.data.data || res.data || [];
       setSecoes(items);
       setExpanded(Object.fromEntries(items.map((s: Secao) => [s.id, true])));
     } catch {
+      setError(true);
       toast.error('Erro ao carregar regras');
     } finally {
       setLoading(false);
@@ -91,6 +133,7 @@ export default function EstRegras() {
   const saveSecao = async () => {
     if (!estabelecimentoId || !secaoNome.trim()) return;
     try {
+      setSavingSecao(true);
       if (editingSecao) {
         await regrasApi.updateSecao(editingSecao.id, { nome: secaoNome.trim() });
         toast.success('Seção atualizada');
@@ -102,17 +145,22 @@ export default function EstRegras() {
       load();
     } catch {
       toast.error('Erro ao salvar seção');
+    } finally {
+      setSavingSecao(false);
     }
   };
 
   const deleteSecao = async (id: string) => {
-    if (!confirm('Excluir esta seção e todos os seus tópicos?')) return;
     try {
+      setDeleting(true);
       await regrasApi.deleteSecao(id);
       toast.success('Seção removida');
+      setSecaoToDelete(null);
       load();
     } catch {
       toast.error('Erro ao remover seção');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -127,6 +175,7 @@ export default function EstRegras() {
   const saveTopico = async () => {
     if (!topicoLabel.trim()) return;
     try {
+      setSavingTopico(true);
       if (editingTopico) {
         await regrasApi.updateTopico(editingTopico.id, { label: topicoLabel.trim(), valor: topicoValor.trim() });
         toast.success('Tópico atualizado');
@@ -138,17 +187,22 @@ export default function EstRegras() {
       load();
     } catch {
       toast.error('Erro ao salvar tópico');
+    } finally {
+      setSavingTopico(false);
     }
   };
 
   const deleteTopico = async (id: string) => {
-    if (!confirm('Excluir este tópico?')) return;
     try {
+      setDeleting(true);
       await regrasApi.deleteTopico(id);
       toast.success('Tópico removido');
+      setTopicoToDelete(null);
       load();
     } catch {
       toast.error('Erro ao remover tópico');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -184,125 +238,404 @@ export default function EstRegras() {
     }
   };
 
-  if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}><CircularProgress /></Box>;
+  const totalTopicos = useMemo(
+    () => secoes.reduce((acc, secao) => acc + (secao.topicos?.length || 0), 0),
+    [secoes],
+  );
+
+  if (loading) return <PageLoading label="Carregando regras do estabelecimento…" />;
 
   if (!estabelecimentoId) {
     return (
-      <Box sx={{ p: 3, maxWidth: 900, mx: 'auto' }}>
-        <Typography variant="h5" sx={{ fontWeight: 700 }}>Regras e Informações</Typography>
-        <Paper sx={{ p: 4, mt: 2, textAlign: 'center' }}>
-          <Typography color="text.secondary">Nenhum estabelecimento encontrado.</Typography>
-        </Paper>
-      </Box>
+      <PageContainer maxWidth="reading">
+        <PageHeader
+          overline="Catálogo"
+          title="Regras e informações"
+          subtitle="Organize as políticas e informações do estabelecimento em seções e tópicos."
+          icon={<Rule />}
+        />
+        <SectionCard>
+          <EmptyState
+            title="Nenhum estabelecimento encontrado"
+            description="Vincule um estabelecimento à sua conta para cadastrar regras e informações."
+            icon={<Rule />}
+          />
+        </SectionCard>
+      </PageContainer>
     );
   }
 
   return (
-    <Box sx={{ p: 3, maxWidth: 900, mx: 'auto' }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h5" sx={{ fontWeight: 700 }}>Regras e Informações</Typography>
-        <Button variant="contained" startIcon={<Add />} onClick={() => openSecaoDialog()}>
-          Nova Seção
-        </Button>
-      </Box>
+    <PageContainer maxWidth="reading">
+      <PageHeader
+        overline="Catálogo"
+        title="Regras e informações"
+        subtitle="Agrupe horários, políticas e regras da casa em seções. Cada tópico reúne um título e a descrição exibida ao hóspede."
+        icon={<Rule />}
+        actions={
+          <Button variant="contained" startIcon={<Add />} onClick={() => openSecaoDialog()}>
+            Nova seção
+          </Button>
+        }
+      />
 
-      {secoes.length === 0 && (
-        <Paper sx={{ p: 4, textAlign: 'center' }}>
-          <Typography color="text.secondary">Nenhuma seção de regras cadastrada.</Typography>
-        </Paper>
+      {error ? (
+        <SectionCard>
+          <ErrorState
+            title="Não foi possível carregar as regras"
+            description="Ocorreu uma falha ao buscar as seções do estabelecimento. Tente novamente em instantes."
+            onRetry={load}
+          />
+        </SectionCard>
+      ) : secoes.length === 0 ? (
+        <SectionCard>
+          <EmptyState
+            title="Nenhuma seção de regras cadastrada"
+            description="Comece criando uma seção, como Horários, Políticas ou Regras da casa, e adicione tópicos com os detalhes."
+            icon={<Rule />}
+            action={
+              <Button variant="contained" startIcon={<Add />} onClick={() => openSecaoDialog()}>
+                Criar primeira seção
+              </Button>
+            }
+          />
+        </SectionCard>
+      ) : (
+        <Stack spacing={2}>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1 }}>
+            <Typography variant="body2" color="textSecondary">
+              {plural(secoes.length, 'seção', 'seções')}
+            </Typography>
+            <Typography variant="body2" color="textDisabled" aria-hidden>
+              ·
+            </Typography>
+            <Typography variant="body2" color="textSecondary">
+              {plural(totalTopicos, 'tópico', 'tópicos')}
+            </Typography>
+          </Box>
+
+          {secoes.map((secao, secaoIndex) => {
+            const isExpanded = Boolean(expanded[secao.id]);
+            return (
+              <Accordion
+                key={secao.id}
+                variant="outlined"
+                expanded={isExpanded}
+                onChange={() => setExpanded(p => ({ ...p, [secao.id]: !p[secao.id] }))}
+                sx={{ borderRadius: 3, '&.Mui-expanded': { borderRadius: 3 } }}
+              >
+                <AccordionSummary
+                  expandIcon={<ExpandMore />}
+                  aria-controls={`secao-${secao.id}-conteudo`}
+                  id={`secao-${secao.id}-cabecalho`}
+                  sx={{ px: { xs: 1.5, sm: 2.5 }, minHeight: 64, '& .MuiAccordionSummary-content': { my: 1.25 } }}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 0, flex: 1 }}>
+                    <Box
+                      aria-hidden
+                      sx={{
+                        width: 30,
+                        height: 30,
+                        borderRadius: 2,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                        bgcolor: 'action.selected',
+                        color: 'primary.main',
+                        typography: 'caption',
+                        fontWeight: 700,
+                      }}
+                    >
+                      {secaoIndex + 1}
+                    </Box>
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography variant="subtitle1" component="span" sx={{ fontWeight: 600, display: 'block' }} noWrap>
+                        {secao.nome}
+                      </Typography>
+                      <Typography variant="caption" color="textSecondary" component="span">
+                        {secao.topicos.length === 0
+                          ? 'Nenhum tópico'
+                          : plural(secao.topicos.length, 'tópico', 'tópicos')}
+                      </Typography>
+                    </Box>
+                  </Box>
+
+                  <Stack
+                    direction="row"
+                    spacing={0.25}
+                    sx={{ alignItems: 'center', mr: 0.5, flexShrink: 0 }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Tooltip title="Mover seção para cima">
+                      <span>
+                        <IconButton
+                          size="small"
+                          aria-label={`Mover seção ${secao.nome} para cima`}
+                          disabled={secaoIndex === 0}
+                          onClick={(e) => { e.stopPropagation(); moveSecao(secaoIndex, -1); }}
+                        >
+                          <ArrowUpward fontSize="small" />
+                        </IconButton>
+                      </span>
+                    </Tooltip>
+                    <Tooltip title="Mover seção para baixo">
+                      <span>
+                        <IconButton
+                          size="small"
+                          aria-label={`Mover seção ${secao.nome} para baixo`}
+                          disabled={secaoIndex === secoes.length - 1}
+                          onClick={(e) => { e.stopPropagation(); moveSecao(secaoIndex, 1); }}
+                        >
+                          <ArrowDownward fontSize="small" />
+                        </IconButton>
+                      </span>
+                    </Tooltip>
+                    <Tooltip title="Editar seção">
+                      <IconButton
+                        size="small"
+                        aria-label={`Editar seção ${secao.nome}`}
+                        onClick={(e) => { e.stopPropagation(); openSecaoDialog(secao); }}
+                      >
+                        <EditOutlined fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Excluir seção">
+                      <IconButton
+                        size="small"
+                        color="error"
+                        aria-label={`Excluir seção ${secao.nome}`}
+                        onClick={(e) => { e.stopPropagation(); setSecaoToDelete(secao); }}
+                      >
+                        <DeleteOutlined fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </Stack>
+                </AccordionSummary>
+
+                <AccordionDetails sx={{ px: { xs: 1.5, sm: 2.5 }, pt: 0, pb: 2 }}>
+                  <Divider sx={{ mb: 1 }} />
+                  {secao.topicos.length === 0 ? (
+                    <Box sx={{ py: 2, textAlign: 'center' }}>
+                      <Typography variant="body2" color="textSecondary">
+                        Esta seção ainda não tem tópicos.
+                      </Typography>
+                    </Box>
+                  ) : (
+                    <Stack spacing={0.5}>
+                      {secao.topicos.map((topico, topicoIndex) => (
+                        <Box
+                          key={topico.id}
+                          sx={{
+                            display: 'flex',
+                            alignItems: { xs: 'flex-start', sm: 'center' },
+                            justifyContent: 'space-between',
+                            flexWrap: { xs: 'wrap', sm: 'nowrap' },
+                            gap: 1,
+                            px: 1.5,
+                            py: 1,
+                            borderRadius: 2,
+                            transition: 'background-color 120ms',
+                            '&:hover': { bgcolor: 'action.hover' },
+                          }}
+                        >
+                          <Box sx={{ minWidth: 0, flex: 1 }}>
+                            <Typography variant="body2" sx={{ fontWeight: 600 }} component="p">
+                              {topico.label}
+                            </Typography>
+                            {topico.valor && (
+                              <Typography variant="body2" color="textSecondary" component="p">
+                                {topico.valor}
+                              </Typography>
+                            )}
+                          </Box>
+                          <Stack direction="row" spacing={0.25} sx={{ alignItems: 'center', flexShrink: 0 }}>
+                            <Tooltip title="Mover tópico para cima">
+                              <span>
+                                <IconButton
+                                  size="small"
+                                  aria-label={`Mover tópico ${topico.label} para cima`}
+                                  disabled={topicoIndex === 0}
+                                  onClick={() => moveTopico(secao.id, topicoIndex, -1)}
+                                >
+                                  <ArrowUpward fontSize="small" />
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                            <Tooltip title="Mover tópico para baixo">
+                              <span>
+                                <IconButton
+                                  size="small"
+                                  aria-label={`Mover tópico ${topico.label} para baixo`}
+                                  disabled={topicoIndex === secao.topicos.length - 1}
+                                  onClick={() => moveTopico(secao.id, topicoIndex, 1)}
+                                >
+                                  <ArrowDownward fontSize="small" />
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                            <Tooltip title="Editar tópico">
+                              <IconButton
+                                size="small"
+                                aria-label={`Editar tópico ${topico.label}`}
+                                onClick={() => openTopicoDialog(secao.id, topico)}
+                              >
+                                <EditOutlined fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Excluir tópico">
+                              <IconButton
+                                size="small"
+                                color="error"
+                                aria-label={`Excluir tópico ${topico.label}`}
+                                onClick={() => setTopicoToDelete(topico)}
+                              >
+                                <DeleteOutlined fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          </Stack>
+                        </Box>
+                      ))}
+                    </Stack>
+                  )}
+
+                  <Button
+                    size="small"
+                    startIcon={<Add />}
+                    onClick={() => openTopicoDialog(secao.id)}
+                    sx={{ mt: 1.5 }}
+                  >
+                    Adicionar tópico
+                  </Button>
+                </AccordionDetails>
+              </Accordion>
+            );
+          })}
+        </Stack>
       )}
 
-      {secoes.map((secao, secaoIndex) => (
-        <Paper key={secao.id} sx={{ mb: 2, overflow: 'hidden' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', px: 2, py: 1.5, bgcolor: 'action.hover' }}>
-            <IconButton size="small" onClick={() => setExpanded(p => ({ ...p, [secao.id]: !p[secao.id] }))}>
-              {expanded[secao.id] ? <ExpandLess /> : <ExpandMore />}
-            </IconButton>
-            <Typography sx={{ fontWeight: 600, flex: 1, ml: 1 }}>{secao.nome}</Typography>
-            <IconButton size="small" disabled={secaoIndex === 0} onClick={() => moveSecao(secaoIndex, -1)}>
-              <ArrowUpward fontSize="small" />
-            </IconButton>
-            <IconButton size="small" disabled={secaoIndex === secoes.length - 1} onClick={() => moveSecao(secaoIndex, 1)}>
-              <ArrowDownward fontSize="small" />
-            </IconButton>
-            <IconButton size="small" onClick={() => openSecaoDialog(secao)}><Edit fontSize="small" /></IconButton>
-            <IconButton size="small" color="error" onClick={() => deleteSecao(secao.id)}><Delete fontSize="small" /></IconButton>
-          </Box>
-          <Collapse in={expanded[secao.id]}>
-            <List dense disablePadding>
-              {secao.topicos.map((topico, topicoIndex) => (
-                <ListItem key={topico.id} sx={{ pl: 4, pr: 1, borderTop: '1px solid', borderColor: 'divider' }}>
-                  <ListItemText
-                    primary={topico.label}
-                    secondary={topico.valor}
-                  />
-                  <ListItemSecondaryAction sx={{ display: 'flex', gap: 0 }}>
-                    <IconButton size="small" disabled={topicoIndex === 0} onClick={() => moveTopico(secao.id, topicoIndex, -1)}>
-                      <ArrowUpward fontSize="small" />
-                    </IconButton>
-                    <IconButton size="small" disabled={topicoIndex === secao.topicos.length - 1} onClick={() => moveTopico(secao.id, topicoIndex, 1)}>
-                      <ArrowDownward fontSize="small" />
-                    </IconButton>
-                    <IconButton size="small" onClick={() => openTopicoDialog(secao.id, topico)}><Edit fontSize="small" /></IconButton>
-                    <IconButton size="small" color="error" onClick={() => deleteTopico(topico.id)}><Delete fontSize="small" /></IconButton>
-                  </ListItemSecondaryAction>
-                </ListItem>
-              ))}
-            </List>
-            <Box sx={{ p: 1, pl: 4 }}>
-              <Button size="small" startIcon={<Add />} onClick={() => openTopicoDialog(secao.id)}>
-                Adicionar Tópico
-              </Button>
-            </Box>
-          </Collapse>
-        </Paper>
-      ))}
-
-      <Dialog open={dialogSecao} onClose={() => setDialogSecao(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>{editingSecao ? 'Editar Seção' : 'Nova Seção'}</DialogTitle>
+      {/* Criar / editar seção */}
+      <Dialog
+        open={dialogSecao}
+        onClose={() => { if (!savingSecao) setDialogSecao(false); }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle component="h2">
+          {editingSecao ? 'Editar seção' : 'Nova seção'}
+        </DialogTitle>
         <DialogContent>
-          <TextField
-            autoFocus
-            label="Nome da seção"
-            fullWidth
-            value={secaoNome}
-            onChange={e => setSecaoNome(e.target.value)}
-            sx={{ mt: 1 }}
-            placeholder="Ex: Horários, Políticas, Regras da Casa"
-          />
+          <FormSection description="Use nomes curtos e reconhecíveis, como Horários, Políticas ou Regras da casa.">
+            <FormGrid columns={1}>
+              <TextField
+                autoFocus
+                label="Nome da seção"
+                fullWidth
+                required
+                value={secaoNome}
+                onChange={e => setSecaoNome(e.target.value)}
+                placeholder="Ex.: Horários, Políticas, Regras da casa"
+                helperText="Obrigatório. Aparece como título da seção na página do estabelecimento."
+              />
+            </FormGrid>
+          </FormSection>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDialogSecao(false)}>Cancelar</Button>
-          <Button variant="contained" onClick={saveSecao}>Salvar</Button>
-        </DialogActions>
+        <FormActions sx={{ px: 3, pb: 2.5, mt: 0 }}>
+          <Button color="inherit" onClick={() => setDialogSecao(false)} disabled={savingSecao}>
+            Cancelar
+          </Button>
+          <Button
+            variant="contained"
+            onClick={saveSecao}
+            disabled={!secaoNome.trim() || savingSecao}
+          >
+            {savingSecao ? 'Salvando…' : editingSecao ? 'Salvar alterações' : 'Criar seção'}
+          </Button>
+        </FormActions>
       </Dialog>
 
-      <Dialog open={dialogTopico} onClose={() => setDialogTopico(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>{editingTopico ? 'Editar Tópico' : 'Novo Tópico'}</DialogTitle>
+      {/* Criar / editar tópico */}
+      <Dialog
+        open={dialogTopico}
+        onClose={() => { if (!savingTopico) setDialogTopico(false); }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle component="h2">
+          {editingTopico ? 'Editar tópico' : 'Novo tópico'}
+        </DialogTitle>
         <DialogContent>
-          <TextField
-            autoFocus
-            label="Título"
-            fullWidth
-            value={topicoLabel}
-            onChange={e => setTopicoLabel(e.target.value)}
-            sx={{ mt: 1 }}
-            placeholder="Ex: Check-in, Café da manhã"
-          />
-          <TextField
-            label="Valor / Descrição"
-            fullWidth
-            value={topicoValor}
-            onChange={e => setTopicoValor(e.target.value)}
-            sx={{ mt: 2 }}
-            placeholder="Ex: a partir das 14:00h"
-          />
+          <FormSection description="O título aparece em destaque e a descrição complementa o que o hóspede precisa saber.">
+            <FormGrid columns={1}>
+              <TextField
+                autoFocus
+                label="Título"
+                fullWidth
+                required
+                value={topicoLabel}
+                onChange={e => setTopicoLabel(e.target.value)}
+                placeholder="Ex.: Check-in, Café da manhã"
+              />
+              <TextField
+                label="Valor / descrição"
+                fullWidth
+                value={topicoValor}
+                onChange={e => setTopicoValor(e.target.value)}
+                placeholder="Ex.: a partir das 14h"
+                multiline
+                minRows={2}
+              />
+              <FormSpan span={1}>
+                <Typography variant="caption" color="textSecondary">
+                  Dica: descreva horários, restrições e condições de forma objetiva.
+                </Typography>
+              </FormSpan>
+            </FormGrid>
+          </FormSection>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDialogTopico(false)}>Cancelar</Button>
-          <Button variant="contained" onClick={saveTopico}>Salvar</Button>
-        </DialogActions>
+        <FormActions sx={{ px: 3, pb: 2.5, mt: 0 }}>
+          <Button color="inherit" onClick={() => setDialogTopico(false)} disabled={savingTopico}>
+            Cancelar
+          </Button>
+          <Button
+            variant="contained"
+            onClick={saveTopico}
+            disabled={!topicoLabel.trim() || savingTopico}
+          >
+            {savingTopico ? 'Salvando…' : editingTopico ? 'Salvar alterações' : 'Criar tópico'}
+          </Button>
+        </FormActions>
       </Dialog>
-    </Box>
+
+      <ConfirmDialog
+        open={Boolean(secaoToDelete)}
+        title="Excluir seção"
+        description={
+          <>
+            Excluir a seção <strong>{secaoToDelete?.nome}</strong> e todos os seus tópicos? Esta ação não pode ser desfeita.
+          </>
+        }
+        confirmLabel="Excluir seção"
+        tone="error"
+        loading={deleting}
+        onConfirm={() => secaoToDelete && deleteSecao(secaoToDelete.id)}
+        onClose={() => { if (!deleting) setSecaoToDelete(null); }}
+      />
+
+      <ConfirmDialog
+        open={Boolean(topicoToDelete)}
+        title="Excluir tópico"
+        description={
+          <>
+            Excluir o tópico <strong>{topicoToDelete?.label}</strong>? Esta ação não pode ser desfeita.
+          </>
+        }
+        confirmLabel="Excluir tópico"
+        tone="error"
+        loading={deleting}
+        onConfirm={() => topicoToDelete && deleteTopico(topicoToDelete.id)}
+        onClose={() => { if (!deleting) setTopicoToDelete(null); }}
+      />
+    </PageContainer>
   );
 }

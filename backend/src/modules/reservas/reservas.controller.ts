@@ -26,17 +26,31 @@ export class ReservationsController {
   @ApiOperation({ summary: 'Lista reservas com filtros' })
   @ApiQuery({ name: 'estabelecimentoId', required: false })
   @ApiQuery({ name: 'status', required: false })
+  @ApiQuery({ name: 'dataInicio', required: false, description: 'YYYY-MM-DD (início do intervalo)' })
+  @ApiQuery({ name: 'dataFim', required: false, description: 'YYYY-MM-DD (fim do intervalo)' })
+  @ApiQuery({
+    name: 'campoData',
+    required: false,
+    enum: ['estadia', 'solicitacao'],
+    description: 'estadia = check-in dentro do intervalo (padrão); solicitacao = criadoEm',
+  })
   @ApiQuery({ name: 'page', required: false, type: Number })
   findAll(
     @CurrentUser('sub') userId: string,
     @CurrentUser('perfil') userRole: string,
     @Query('estabelecimentoId') estabelecimentoId?: string,
     @Query('status') status?: string,
+    @Query('dataInicio') dataInicio?: string,
+    @Query('dataFim') dataFim?: string,
+    @Query('campoData') campoData?: string,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page?: number,
     @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit?: number,
   ) {
     const filters: any = { page, limit };
     if (status) filters.status = status;
+    if (dataInicio) filters.dataInicio = dataInicio;
+    if (dataFim) filters.dataFim = dataFim;
+    if (campoData) filters.campoData = campoData;
     if (userRole === 'HOSPEDE') filters.hospedeId = userId;
     if (userRole === 'ESTABELECIMENTO' && estabelecimentoId) filters.estabelecimentoId = estabelecimentoId;
     if (userRole === 'ADMIN' && estabelecimentoId) filters.estabelecimentoId = estabelecimentoId;

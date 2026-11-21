@@ -6,6 +6,7 @@ export class CreateFotoDto {
   @ApiProperty() @IsString() s3Key: string;
   @ApiPropertyOptional() @IsOptional() @IsUUID() estabelecimentoId?: string;
   @ApiPropertyOptional() @IsOptional() @IsUUID() quartoId?: string;
+  @ApiPropertyOptional() @IsOptional() @IsUUID() eventoId?: string;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() isCapa?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsNumber() ordem?: number;
 }

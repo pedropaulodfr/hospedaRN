@@ -117,6 +117,8 @@ export class NotificationsService {
     valorTotal: number;
     pixKey: string;
     pixType: string;
+    /** true quando o estabelecimento usa Mercado Pago (sem chave PIX/comprovante) */
+    pagamentoAutomatico?: boolean;
   }) {
     await this.addToQueue('reserva-confirmed', {
       to: data.email,
@@ -183,6 +185,22 @@ export class NotificationsService {
       to: data.email,
       subject: `Pagamento confirmado — Reserva ${data.codigoReserva}`,
       template: 'pagamento-mp-confirmed',
+      context: data,
+    } as EmailJobData);
+  }
+
+  async sendPaymentMercadoPagoConfirmedToEstablishment(data: {
+    email: string;
+    nome: string;
+    codigoReserva: string;
+    estabelecimento: string;
+    checkIn: string;
+    checkOut: string;
+  }) {
+    await this.addToQueue('pagamento-mp-confirmed-establishment', {
+      to: data.email,
+      subject: `Pagamento recebido — Reserva ${data.codigoReserva}`,
+      template: 'pagamento-mp-confirmed-establishment',
       context: data,
     } as EmailJobData);
   }

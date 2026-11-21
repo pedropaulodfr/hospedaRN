@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { CreateFotoDto } from './dto/create-foto.dto';
 import { UpdateFotoDto } from './dto/update-foto.dto';
@@ -8,6 +8,12 @@ export class FotosService {
   constructor(private prisma: PrismaService) {}
 
   async create(dto: CreateFotoDto) {
+    const donos = [dto.estabelecimentoId, dto.quartoId, dto.eventoId].filter(Boolean);
+    if (donos.length === 0) throw new NotFoundException('Informe estabelecimentoId, quartoId ou eventoId');
+    if (donos.length > 1) {
+      throw new BadRequestException('A foto deve pertencer a apenas um dono: estabelecimento, quarto ou evento');
+    }
+
     if (dto.estabelecimentoId) {
       await this.prisma.estabelecimento.findUniqueOrThrow({ where: { id: dto.estabelecimentoId } }).catch(() => {
         throw new NotFoundException('Estabelecimento nao encontrado');
@@ -18,21 +24,20 @@ export class FotosService {
         throw new NotFoundException('Quarto nao encontrado');
       });
     }
-
-    const ownerId = dto.estabelecimentoId || dto.quartoId;
-    if (!ownerId) throw new NotFoundException('Informe estabelecimentoId ou quartoId');
+    if (dto.eventoId) {
+      await this.prisma.evento.findUniqueOrThrow({ where: { id: dto.eventoId } }).catch(() => {
+        throw new NotFoundException('Evento nao encontrado');
+      });
+    }
 
     if (dto.isCapa) {
-      await this.prisma.foto.updateMany({
-        where: {
-          OR: [
-            { estabelecimentoId: dto.estabelecimentoId },
-            { quartoId: dto.quartoId },
-          ].filter(Boolean) as any,
-          isCapa: true,
-        },
-        data: { isCapa: false },
-      });
+      const escopo = this.escopoDono(dto);
+      if (escopo.length) {
+        await this.prisma.foto.updateMany({
+          where: { OR: escopo, isCapa: true },
+          data: { isCapa: false },
+        });
+      }
     }
 
     return this.prisma.foto.create({
@@ -41,6 +46,7 @@ export class FotosService {
         s3Key: dto.s3Key,
         estabelecimentoId: dto.estabelecimentoId ?? null,
         quartoId: dto.quartoId ?? null,
+        eventoId: dto.eventoId ?? null,
         isCapa: dto.isCapa ?? false,
         ordem: dto.ordem ?? 0,
       },
@@ -52,10 +58,13 @@ export class FotosService {
     if (!foto) throw new NotFoundException('Foto nao encontrada');
 
     if (dto.isCapa) {
-      await this.prisma.foto.updateMany({
-        where: { estabelecimentoId: foto.estabelecimentoId, isCapa: true, id: { not: id } },
-        data: { isCapa: false },
-      });
+      const escopo = this.escopoDono(foto);
+      if (escopo.length) {
+        await this.prisma.foto.updateMany({
+          where: { OR: escopo, isCapa: true, id: { not: id } },
+          data: { isCapa: false },
+        });
+      }
     }
 
     return this.prisma.foto.update({ where: { id }, data: dto });
@@ -79,5 +88,25 @@ export class FotosService {
       where: { quartoId },
       orderBy: { ordem: 'asc' },
     });
+  }
+
+  async findByEvent(eventoId: string) {
+    return this.prisma.foto.findMany({
+      where: { eventoId },
+      orderBy: { ordem: 'asc' },
+    });
+  }
+
+  /** Escopo do dono da foto (estabelecimento, quarto ou evento), ignorando ids ausentes/nulos. */
+  private escopoDono(dono: {
+    estabelecimentoId?: string | null;
+    quartoId?: string | null;
+    eventoId?: string | null;
+  }) {
+    const escopo: Array<{ estabelecimentoId: string } | { quartoId: string } | { eventoId: string }> = [];
+    if (dono.estabelecimentoId) escopo.push({ estabelecimentoId: dono.estabelecimentoId });
+    if (dono.quartoId) escopo.push({ quartoId: dono.quartoId });
+    if (dono.eventoId) escopo.push({ eventoId: dono.eventoId });
+    return escopo;
   }
 }

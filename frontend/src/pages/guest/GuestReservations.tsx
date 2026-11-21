@@ -1,55 +1,64 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  Alert,
   Box,
-  Typography,
-  Paper,
   Button,
-  Grid,
   Card,
   CardContent,
-  CardMedia,
-  Chip,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  DialogContentText,
-  TextField,
-  Tabs,
-  Tab,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Divider,
-  Alert,
+  Grid,
   IconButton,
-  TablePagination,
-  alpha,
-  useTheme,
-  useMediaQuery,
   LinearProgress,
-  ImageList,
-  ImageListItem,
+  Tab,
+  TablePagination,
+  Tabs,
+  TextField,
+  Typography,
+  alpha,
 } from '@mui/material';
 import {
   CalendarMonth,
-  People,
-  AttachMoney,
-  Info,
-  Phone,
-  Email,
-  LocationOn,
-  OpenInNew,
+  CancelOutlined,
+  CheckCircleOutlined,
+  Close,
   CloudUpload,
   ContentCopy,
-  CheckCircleOutlined,
-  CancelOutlined,
-  Close,
-  WarningAmber,
+  Email,
+  Hotel,
+  LocationOn,
+  OpenInNew,
   Payment,
+  People,
+  Phone,
   ReceiptLong,
-  Image,
+  Refresh,
+  Search,
+  WarningAmber,
 } from '@mui/icons-material';
+import {
+  ConfirmDialog,
+  EmptyState,
+  ErrorState,
+  InfoGrid,
+  InfoItem,
+  InfoRow,
+  ModoPagamentoChip,
+  PageContainer,
+  PageHeader,
+  PageLoading,
+  SectionCard,
+  StatCard,
+  StatusChip,
+} from '../../components/common';
+import { formatCurrency, formatDate } from '../../theme/tokens';
 import { reservationsApi, paymentsApi } from '../../services/api';
+import { GUEST_RESERVATIONS_KEY, invalidateGuestReservations } from '../../services/queryKeys';
 import toast from 'react-hot-toast';
 import dayjs from 'dayjs';
 import 'dayjs/locale/pt-br';
@@ -132,6 +141,8 @@ interface Reservation {
   criancas: number;
   valorTotal: number | string;
   status: 'SOLICITADA' | 'CONFIRMADA' | 'AGUARDANDO_PAGAMENTO' | 'FINALIZADA' | 'CANCELADA';
+  /** Snapshot do modo de pagamento no momento da criação da reserva */
+  modoPagamento?: 'PADRAO' | 'MERCADO_PAGO';
   observacoes?: string;
   cancelamentoMotivo?: string;
   criadoEm: string;
@@ -150,25 +161,22 @@ interface PixData {
   pixCopyPaste: string;
 }
 
-const statusMap = {
-  SOLICITADA: { label: 'Solicitada', color: 'info' as const, bg: 'rgba(2, 136, 209, 0.08)', text: '#0288d1' },
-  CONFIRMADA: { label: 'Confirmada / Pagar', color: 'warning' as const, bg: 'rgba(245, 158, 11, 0.08)', text: '#d97706' },
-  AGUARDANDO_PAGAMENTO: { label: 'Aguardando Validação', color: 'warning' as const, bg: 'rgba(245, 158, 11, 0.08)', text: '#d97706' },
-  FINALIZADA: { label: 'Finalizada', color: 'success' as const, bg: 'rgba(16, 185, 129, 0.08)', text: '#059669' },
-  CANCELADA: { label: 'Cancelada', color: 'error' as const, bg: 'rgba(239, 68, 68, 0.08)', text: '#dc2626' },
-};
-
-const formatCurrency = (val: string | number) => {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(val));
-};
+/**
+ * O modo de pagamento é definido por estabelecimento, mas cada reserva guarda um
+ * snapshot do modo vigente na sua criação (regra: reservas antigas continuam no
+ * modo em que foram criadas).
+ */
+const modoPagamentoDaReserva = (
+  reserva?: {
+    modoPagamento?: 'PADRAO' | 'MERCADO_PAGO';
+    estabelecimento?: { modoPagamento?: 'PADRAO' | 'MERCADO_PAGO' };
+  } | null
+): 'PADRAO' | 'MERCADO_PAGO' =>
+  reserva?.modoPagamento ?? reserva?.estabelecimento?.modoPagamento ?? 'PADRAO';
 
 export default function GuestReservations() {
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-  const queryClient = useQueryClient();
-
   // Selected states
-  const [activeTab, setActiveTab] = useState(0); // 0: Todas, 1: Solicitadas, 2: A pagar (CONFIRMADA/AGUARDANDO_PAGAMENTO), 3: Concluídas, 4: Canceladas
+  const [activeTab, setActiveTab] = useState(0); // 0: Tudo, 1: Solicitadas, 2: Confirmadas, 3: Aguardando pagamento, 4: Finalizadas, 5: Canceladas
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(6);
 
@@ -204,22 +212,59 @@ export default function GuestReservations() {
   const [cancelReason, setCancelReason] = useState('');
   const [cancelling, setCancelling] = useState(false);
 
+  const queryClient = useQueryClient();
+
   // Fetch all guest reservations
-  const { data: allReservations = [], isLoading, refetch } = useQuery<Reservation[]>({
-    queryKey: ['guest-reservations-all'],
+  const { data: allReservations = [], isLoading, isError, refetch } = useQuery<Reservation[]>({
+    queryKey: GUEST_RESERVATIONS_KEY,
     queryFn: async () => {
       const res = await reservationsApi.getAll({ limit: 1000 });
-      return res.data?.data?.data || res.data?.data || res.data || [];
+      const list: Reservation[] = res.data?.data?.data || res.data?.data || res.data || [];
+
+      // Mercado Pago: além do webhook, consultamos a plataforma a cada ciclo.
+      // Assim a reserva é reconhecida como paga mesmo se a notificação não
+      // alcançar o servidor (ex.: ambiente local).
+      const pendentes = list.filter(
+        (r) =>
+          modoPagamentoDaReserva(r) === 'MERCADO_PAGO' &&
+          (r.status === 'CONFIRMADA' || r.status === 'AGUARDANDO_PAGAMENTO')
+      );
+
+      if (pendentes.length > 0) {
+        const resultados = await Promise.all(
+          pendentes.map((r) => paymentsApi.syncMP(r.id).catch(() => null))
+        );
+        const confirmou = resultados.some((r) => {
+          const info = r?.data?.data || r?.data;
+          return info?.status === 'CONFIRMADO';
+        });
+        if (confirmou) {
+          const atualizado = await reservationsApi.getAll({ limit: 1000 });
+          return (
+            atualizado.data?.data?.data || atualizado.data?.data || atualizado.data || list
+          );
+        }
+      }
+
+      return list;
     },
     refetchInterval: 15_000,
+    // A lista muda por fora desta tela (estabelecimento confirma, MP reconhece,
+    // reserva criada em outra página): ao montar, sempre buscar dados novos em
+    // vez de servir cache de até 5 min.
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
 
-  // Calculate dynamic stats
+  // Contagens derivadas das reservas reais (alimentam filtros e indicadores)
   const totalCount = allReservations.length;
   const pendingCount = allReservations.filter((r) => r.status === 'SOLICITADA').length;
+  const confirmedCount = allReservations.filter((r) => r.status === 'CONFIRMADA').length;
   const awaitingPaymentCount = allReservations.filter(
-    (r) => r.status === 'CONFIRMADA' || r.status === 'AGUARDANDO_PAGAMENTO'
+    (r) => r.status === 'AGUARDANDO_PAGAMENTO'
   ).length;
+  const inProgressCount = confirmedCount + awaitingPaymentCount;
   const finalizedCount = allReservations.filter((r) => r.status === 'FINALIZADA').length;
   const canceledCount = allReservations.filter((r) => r.status === 'CANCELADA').length;
 
@@ -229,12 +274,12 @@ export default function GuestReservations() {
       case 1:
         return allReservations.filter((r) => r.status === 'SOLICITADA');
       case 2:
-        return allReservations.filter(
-          (r) => r.status === 'CONFIRMADA' || r.status === 'AGUARDANDO_PAGAMENTO'
-        );
+        return allReservations.filter((r) => r.status === 'CONFIRMADA');
       case 3:
-        return allReservations.filter((r) => r.status === 'FINALIZADA');
+        return allReservations.filter((r) => r.status === 'AGUARDANDO_PAGAMENTO');
       case 4:
+        return allReservations.filter((r) => r.status === 'FINALIZADA');
+      case 5:
         return allReservations.filter((r) => r.status === 'CANCELADA');
       case 0:
       default:
@@ -277,6 +322,7 @@ export default function GuestReservations() {
     setSelectedPaymentMethod(reservation.pagamento?.metodo || 'PIX');
 
     // Fetch refreshed payment details
+    let checkoutSolicitado = false;
     try {
       setPaymentLoading(true);
       const res = await paymentsApi.getByReservation(reservation.id);
@@ -284,7 +330,7 @@ export default function GuestReservations() {
       if (pData) {
         setDetailedPayment(pData);
         setSelectedPaymentMethod(pData.metodo);
-        if (reservation.estabelecimento?.modoPagamento === 'MERCADO_PAGO') {
+        if (modoPagamentoDaReserva(reservation) === 'MERCADO_PAGO') {
           if (pData.dadosPagamento) {
             setMpCheckout({
               paymentId: pData.codigoTransacao,
@@ -293,7 +339,8 @@ export default function GuestReservations() {
             });
           }
           if (reservation.status === 'CONFIRMADA' || reservation.status === 'AGUARDANDO_PAGAMENTO') {
-            createMpCheckout(pData.metodo, false, reservation.id);
+            checkoutSolicitado = true;
+            createMpCheckout(pData.metodo ?? 'PIX', false, reservation.id);
           }
         } else if (pData.metodo === 'PIX') {
           loadPixDetails(reservation.id);
@@ -303,6 +350,20 @@ export default function GuestReservations() {
       console.error('Erro ao buscar pagamento da reserva:', err);
     } finally {
       setPaymentLoading(false);
+    }
+
+    // Mercado Pago: a reserva pode não ter cobrança criada ainda (o pagamento só
+    // é liberado após a aprovação do estabelecimento).
+    if (
+      !checkoutSolicitado &&
+      modoPagamentoDaReserva(reservation) === 'MERCADO_PAGO' &&
+      (reservation.status === 'CONFIRMADA' || reservation.status === 'AGUARDANDO_PAGAMENTO')
+    ) {
+      createMpCheckout(
+        reservation.pagamento?.metodo ?? 'PIX',
+        false,
+        reservation.id
+      );
     }
   };
 
@@ -324,7 +385,10 @@ export default function GuestReservations() {
 
   const handlePaymentMethodChange = (method: 'PIX' | 'CARTAO' | 'BOLETO') => {
     setSelectedPaymentMethod(method);
-    if (selectedReservation?.estabelecimento?.modoPagamento === 'MERCADO_PAGO') {
+    if (
+      selectedReservation &&
+      modoPagamentoDaReserva(selectedReservation) === 'MERCADO_PAGO'
+    ) {
       createMpCheckout(method, false, selectedReservation.id);
       return;
     }
@@ -445,10 +509,10 @@ export default function GuestReservations() {
       // 2. Confirm payment on backend
       await paymentsApi.confirm(paymentObj.id);
 
-      toast.success('Pagamento com cartão simulado e aprovado com sucesso! 🎉');
+      toast.success('Pagamento com cartão simulado e aprovado com sucesso!');
       
       // Refresh queries
-      refetch();
+      void invalidateGuestReservations(queryClient);
       
       // Close modal
       setDetailsOpen(false);
@@ -499,7 +563,7 @@ export default function GuestReservations() {
       toast.success('Comprovante de pagamento enviado com sucesso! Aguarde a validação.');
       
       // Refresh list
-      refetch();
+      void invalidateGuestReservations(queryClient);
       
       // Close details modal
       setDetailsOpen(false);
@@ -521,485 +585,531 @@ export default function GuestReservations() {
   // Confirm cancel reservation
   const handleConfirmCancel = async () => {
     if (!reservationToCancel) return;
+    const reservaCancelada = reservationToCancel;
     try {
       setCancelling(true);
-      await reservationsApi.cancel(reservationToCancel.id, { motivo: cancelReason });
+      await reservationsApi.cancel(reservaCancelada.id, { motivo: cancelReason });
+
+      // Atualização otimista: o cartão muda de status imediatamente, sem
+      // depender do tempo do novo fetch. Em seguida a invalidação reconcilia
+      // com o que o servidor realmente gravou.
+      queryClient.setQueryData<Reservation[]>(GUEST_RESERVATIONS_KEY, (atuais) =>
+        atuais?.map((r) =>
+          r.id === reservaCancelada.id ? { ...r, status: 'CANCELADA' as const } : r,
+        ),
+      );
+
       toast.success('Reserva cancelada com sucesso.');
       setCancelOpen(false);
       setReservationToCancel(null);
-      refetch();
+      void invalidateGuestReservations(queryClient);
       if (detailsOpen) {
         setDetailsOpen(false);
       }
     } catch (error: any) {
       console.error(error);
       toast.error(error.response?.data?.message || 'Erro ao cancelar reserva');
+      // Se o servidor recusou, o cache local pode estar otimista: rebusca.
+      void invalidateGuestReservations(queryClient);
     } finally {
       setCancelling(false);
     }
   };
 
   return (
-    <Box sx={{ p: { xs: 2, md: 4 }, maxWidth: 1200, margin: '0 auto' }}>
-      {/* Header Section */}
-      <Box sx={{ mb: 4 }}>
-        <Typography variant="h4" sx={{ fontFamily: '"Outfit", sans-serif', fontWeight: 800, mb: 1 }}>
-          Minhas Reservas
-        </Typography>
-        <Typography variant="body1" color="text.secondary">
-          Acompanhe suas solicitações de hospedagem, realize pagamentos e gerencie comprovantes de check-in.
-        </Typography>
-      </Box>
+    <PageContainer maxWidth="content">
+      <PageHeader
+        icon={<CalendarMonth />}
+        overline="Área do hóspede"
+        title="Minhas reservas"
+        subtitle="Acompanhe suas solicitações de hospedagem, realize pagamentos e gerencie comprovantes de check-in."
+        actions={
+          <>
+            <Button variant="outlined" startIcon={<Refresh />} onClick={() => refetch()} disabled={isLoading}>
+              Atualizar
+            </Button>
+            <Button variant="contained" startIcon={<Search />} href="/busca">
+              Buscar hospedagens
+            </Button>
+          </>
+        }
+      />
 
-      {/* Stats Dashboard */}
-      <Grid container spacing={2} sx={{ mb: 4 }}>
+      {/* Indicadores — derivados das reservas reais já carregadas */}
+      <Grid container spacing={2} sx={{ mb: 3 }}>
         <Grid size={{ xs: 6, sm: 4, md: 2.4 }}>
-          <Paper sx={{ p: 2, display: 'flex', flexDirection: 'column', height: 100, justifyContent: 'center' }}>
-            <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>Todas</Typography>
-            <Typography variant="h4" sx={{ fontWeight: 800, color: theme.palette.text.primary }}>{totalCount}</Typography>
-          </Paper>
+          <StatCard label="Todas" value={totalCount} icon={<CalendarMonth />} tone="neutral" />
         </Grid>
         <Grid size={{ xs: 6, sm: 4, md: 2.4 }}>
-          <Paper sx={{ p: 2, display: 'flex', flexDirection: 'column', height: 100, justifyContent: 'center', borderLeft: `4px solid ${theme.palette.info.main}` }}>
-            <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>Solicitadas</Typography>
-            <Typography variant="h4" sx={{ fontWeight: 800, color: theme.palette.info.main }}>{pendingCount}</Typography>
-          </Paper>
+          <StatCard
+            label="Solicitadas"
+            value={pendingCount}
+            icon={<WarningAmber />}
+            tone="warning"
+            hint="Aguardando aprovação"
+          />
         </Grid>
         <Grid size={{ xs: 6, sm: 4, md: 2.4 }}>
-          <Paper sx={{ p: 2, display: 'flex', flexDirection: 'column', height: 100, justifyContent: 'center', borderLeft: `4px solid ${theme.palette.warning.main}` }}>
-            <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>A Pagar</Typography>
-            <Typography variant="h4" sx={{ fontWeight: 800, color: theme.palette.warning.main }}>{awaitingPaymentCount}</Typography>
-          </Paper>
+          <StatCard
+            label="Em andamento"
+            value={inProgressCount}
+            icon={<Payment />}
+            tone="info"
+            hint="Confirmadas ou aguardando pagamento"
+          />
         </Grid>
         <Grid size={{ xs: 6, sm: 4, md: 2.4 }}>
-          <Paper sx={{ p: 2, display: 'flex', flexDirection: 'column', height: 100, justifyContent: 'center', borderLeft: `4px solid ${theme.palette.success.main}` }}>
-            <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>Finalizadas</Typography>
-            <Typography variant="h4" sx={{ fontWeight: 800, color: theme.palette.success.main }}>{finalizedCount}</Typography>
-          </Paper>
+          <StatCard label="Finalizadas" value={finalizedCount} icon={<CheckCircleOutlined />} tone="success" />
         </Grid>
         <Grid size={{ xs: 6, sm: 4, md: 2.4 }}>
-          <Paper sx={{ p: 2, display: 'flex', flexDirection: 'column', height: 100, justifyContent: 'center', borderLeft: `4px solid ${theme.palette.error.main}` }}>
-            <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>Canceladas</Typography>
-            <Typography variant="h4" sx={{ fontWeight: 800, color: theme.palette.error.main }}>{canceledCount}</Typography>
-          </Paper>
+          <StatCard label="Canceladas" value={canceledCount} icon={<CancelOutlined />} tone="error" />
         </Grid>
       </Grid>
 
-      {/* Tabs Filter */}
-      <Paper sx={{ mb: 3, borderRadius: '12px', overflow: 'hidden' }}>
+      {/* Filtros por status — contagem sempre derivada das reservas reais */}
+      <SectionCard noPadding sx={{ mb: 3 }}>
         <Tabs
           value={activeTab}
           onChange={handleTabChange}
-          indicatorColor="primary"
-          textColor="primary"
           variant="scrollable"
           scrollButtons="auto"
-          sx={{ borderBottom: 1, borderColor: 'divider' }}
+          allowScrollButtonsMobile
+          aria-label="Filtrar reservas por status"
+          sx={{ px: 1, borderBottom: 0 }}
         >
-          <Tab label="Todas" sx={{ py: 2, px: 3, fontWeight: 600 }} />
-          <Tab label={`Solicitadas (${pendingCount})`} sx={{ py: 2, px: 3, fontWeight: 600 }} />
-          <Tab label={`A Pagar (${awaitingPaymentCount})`} sx={{ py: 2, px: 3, fontWeight: 600 }} />
-          <Tab label={`Concluídas (${finalizedCount})`} sx={{ py: 2, px: 3, fontWeight: 600 }} />
-          <Tab label={`Canceladas (${canceledCount})`} sx={{ py: 2, px: 3, fontWeight: 600 }} />
+          <Tab label={`Tudo (${totalCount})`} />
+          <Tab label={`Solicitadas (${pendingCount})`} />
+          <Tab label={`Confirmadas (${confirmedCount})`} />
+          <Tab label={`Aguardando pagamento (${awaitingPaymentCount})`} />
+          <Tab label={`Finalizadas (${finalizedCount})`} />
+          <Tab label={`Canceladas (${canceledCount})`} />
         </Tabs>
-      </Paper>
+      </SectionCard>
 
-      {/* Loading state */}
-      {isLoading && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 300 }}>
-          <CircularProgress color="primary" />
-        </Box>
-      )}
+      {isLoading ? (
+        <PageLoading label="Carregando suas reservas…" minHeight="40vh" />
+      ) : isError && totalCount === 0 ? (
+        <ErrorState
+          title="Não foi possível carregar suas reservas"
+          description="Ocorreu uma falha na comunicação. Verifique sua conexão e tente novamente."
+          onRetry={() => refetch()}
+        />
+      ) : filteredReservations.length === 0 ? (
+        <EmptyState
+          icon={<CalendarMonth />}
+          title={totalCount === 0 ? 'Você ainda não tem reservas' : 'Nenhuma reserva neste filtro'}
+          description={
+            totalCount === 0
+              ? 'Quando você solicitar uma hospedagem, ela aparecerá aqui para acompanhamento.'
+              : 'Ajuste o filtro para ver suas reservas em outros status.'
+          }
+          action={
+            <Button variant="contained" href="/busca">
+              Buscar hospedagens
+            </Button>
+          }
+        />
+      ) : (
+        <>
+          <Grid container spacing={3}>
+            {paginatedReservations.map((reservation) => {
+              const coverPhoto =
+                reservation.estabelecimento?.fotos?.find((f) => f.isCapa)?.url ||
+                reservation.estabelecimento?.fotos?.[0]?.url ||
+                '';
 
-      {/* Empty State */}
-      {!isLoading && filteredReservations.length === 0 && (
-        <Paper sx={(t) => ({ p: 6, textAlign: 'center', borderRadius: '16px', border: `1px dashed ${t.palette.divider}` })}>
-          <Typography variant="h6" color="text.secondary" sx={{ mb: 1, fontWeight: 600 }}>
-            Nenhuma reserva encontrada
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-            Você não possui reservas nesta categoria no momento.
-          </Typography>
-          <Button variant="contained" color="primary" href="/busca" size="medium">
-            Buscar Hospedagens
-          </Button>
-        </Paper>
-      )}
+              const nights = Math.max(
+                1,
+                dayjs(reservation.checkOut).diff(dayjs(reservation.checkIn), 'day')
+              );
+              const podeCancelar =
+                reservation.status === 'SOLICITADA' ||
+                reservation.status === 'CONFIRMADA' ||
+                reservation.status === 'AGUARDANDO_PAGAMENTO';
 
-      {/* Reservations Card Grid */}
-      {!isLoading && filteredReservations.length > 0 && (
-        <Grid container spacing={3}>
-          {paginatedReservations.map((reservation) => {
-            const statusConfig = statusMap[reservation.status] || {
-              label: reservation.status,
-              color: 'default' as const,
-              bg: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.08)' : '#f1f5f9',
-              text: theme.palette.text.secondary,
-            };
-
-            const coverPhoto =
-              reservation.estabelecimento?.fotos?.find((f) => f.isCapa)?.url ||
-              reservation.estabelecimento?.fotos?.[0]?.url ||
-              '';
-
-            const checkInFormatted = dayjs(reservation.checkIn).format('DD/MM/YYYY');
-            const checkOutFormatted = dayjs(reservation.checkOut).format('DD/MM/YYYY');
-            const nights = dayjs(reservation.checkOut).diff(dayjs(reservation.checkIn), 'day');
-
-            return (
-              <Grid key={reservation.id} size={{ xs: 12, md: 6 }}>
-                <Card
-                  sx={{
-                    display: 'flex',
-                    flexDirection: { xs: 'column', sm: 'row' },
-                    height: '100%',
-                    position: 'relative',
-                    overflow: 'hidden',
-                  }}
-                >
-                  {/* Image Section */}
-                  <Box sx={{ width: { xs: '100%', sm: 180 }, minWidth: { xs: '100%', sm: 180 }, position: 'relative' }}>
-                    {coverPhoto ? (
-                      <CardMedia
-                        component="img"
-                        image={coverPhoto}
-                        alt={reservation.estabelecimento.nome}
-                        sx={{ height: { xs: 160, sm: '100%' }, objectFit: 'cover' }}
-                      />
-                    ) : (
-                      <Box
-                        sx={{
-                          height: { xs: 160, sm: '100%' },
-                          background: `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.7)} 0%, ${alpha(
-                            theme.palette.secondary.main,
-                            0.7
-                          )} 100%)`,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          color: '#fff',
-                        }}
-                      >
-                        <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                          {reservation.estabelecimento.nome.charAt(0)}
-                        </Typography>
-                      </Box>
-                    )}
-                    <Chip
-                      label={statusConfig.label}
-                      size="small"
-                      sx={{
-                        position: 'absolute',
-                        top: 12,
-                        left: 12,
-                        backgroundColor: statusConfig.bg,
-                        color: statusConfig.text,
-                        borderColor: statusConfig.text,
-                        border: '1px solid',
-                        fontWeight: 600,
-                      }}
-                    />
-                  </Box>
-
-                  {/* Content Section */}
-                  <CardContent sx={{ display: 'flex', flexDirection: 'column', flexGrow: 1, p: 2.5 }}>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
-                      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
-                        Cód: {reservation.codigoReserva}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {dayjs(reservation.criadoEm).format('DD MMM YYYY, HH:mm')}
-                      </Typography>
-                    </Box>
-
-                    <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5, lineHeight: 1.2 }}>
-                      {reservation.estabelecimento.nome}
-                    </Typography>
-
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1.5 }}>
-                      <LocationOn sx={{ fontSize: 16, color: 'text.secondary' }} />
-                      <Typography variant="body2" color="text.secondary">
-                        {reservation.estabelecimento.cidade.nome} - {reservation.estabelecimento.cidade.estado}
-                      </Typography>
-                    </Box>
-
-                    <Divider sx={{ mb: 1.5 }} />
-
-                    {/* Room & Dates Info */}
-                    <Box sx={{ mb: 2, flexGrow: 1 }}>
-                      <Typography variant="body2" sx={{ fontWeight: 600, mb: 1 }}>
-                        Quarto: {reservation.quarto.nome}
-                      </Typography>
-
-                      <Box sx={{ display: 'flex', gap: 2, mb: 1, flexWrap: 'wrap' }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                          <CalendarMonth sx={{ fontSize: 16, color: theme.palette.primary.main }} />
-                          <Typography variant="body2" color="text.secondary">
-                            {checkInFormatted} a {checkOutFormatted} ({nights} {nights === 1 ? 'noite' : 'noites'})
-                          </Typography>
-                        </Box>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                          <People sx={{ fontSize: 16, color: theme.palette.primary.main }} />
-                          <Typography variant="body2" color="text.secondary">
-                            {reservation.adultos} A, {reservation.criancas} C
-                          </Typography>
-                        </Box>
-                      </Box>
-                    </Box>
-
-                    {/* Actions and Price Footer */}
+              return (
+                <Grid key={reservation.id} size={{ xs: 12, md: 6 }}>
+                  <Card
+                    sx={{
+                      height: '100%',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      overflow: 'hidden',
+                      transition: 'border-color 180ms, box-shadow 180ms',
+                      '&:hover': { borderColor: 'primary.main', boxShadow: 2 },
+                    }}
+                  >
                     <Box
-                      sx={{
+                      sx={(t) => ({
+                        position: 'relative',
+                        height: 180,
+                        flexShrink: 0,
+                        background: coverPhoto
+                          ? undefined
+                          : `linear-gradient(135deg, ${alpha(t.palette.primary.main, 0.9)} 0%, ${alpha(
+                              t.palette.secondary.main,
+                              0.78
+                            )} 100%)`,
                         display: 'flex',
                         alignItems: 'center',
-                        justifyContent: 'space-between',
-                        mt: 'auto',
-                        gap: 1,
-                        flexWrap: 'wrap',
-                      }}
+                        justifyContent: 'center',
+                        color: 'primary.contrastText',
+                      })}
                     >
-                      <Box>
-                        <Typography variant="caption" color="text.secondary">Valor Total</Typography>
-                        <Typography variant="subtitle1" sx={{ fontWeight: 800, color: theme.palette.secondary.main }}>
-                          {formatCurrency(reservation.valorTotal)}
+                      {coverPhoto ? (
+                        <Box
+                          component="img"
+                          src={coverPhoto}
+                          alt={`Foto de ${reservation.estabelecimento?.nome || 'estabelecimento'}`}
+                          loading="lazy"
+                          sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                        />
+                      ) : (
+                        <Hotel aria-hidden sx={{ fontSize: 44, opacity: 0.9 }} />
+                      )}
+                      <StatusChip
+                        status={reservation.status}
+                        sx={{ position: 'absolute', top: 12, left: 12, bgcolor: 'background.paper' }}
+                      />
+                    </Box>
+
+                    <CardContent sx={{ display: 'flex', flexDirection: 'column', flexGrow: 1, p: 2.5 }}>
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'baseline',
+                          gap: 1,
+                          mb: 0.5,
+                        }}
+                      >
+                        <Typography
+                          variant="caption"
+                          color="textSecondary"
+                          sx={{ fontWeight: 600, fontFamily: 'monospace' }}
+                        >
+                          #{reservation.codigoReserva}
+                        </Typography>
+                        <Typography variant="caption" color="textSecondary">
+                          {dayjs(reservation.criadoEm).format('DD MMM YYYY, HH:mm')}
                         </Typography>
                       </Box>
 
-                      <Box sx={{ display: 'flex', gap: 1 }}>
-                        {(reservation.status === 'SOLICITADA' ||
-                          reservation.status === 'CONFIRMADA' ||
-                          reservation.status === 'AGUARDANDO_PAGAMENTO') && (
-                          <Button
-                            variant="outlined"
-                            color="error"
-                            size="small"
-                            onClick={() => handleOpenCancel(reservation)}
-                          >
-                            Cancelar
-                          </Button>
-                        )}
-                        <Button
-                          variant="contained"
-                          color="primary"
-                          size="small"
-                          onClick={() => handleOpenDetails(reservation)}
+                      <Typography
+                        variant="h6"
+                        component="h2"
+                        sx={{ fontWeight: 700, lineHeight: 1.3, mb: 0.5 }}
+                      >
+                        {reservation.estabelecimento?.nome || 'Estabelecimento'}
+                      </Typography>
+
+                      <Typography
+                        variant="body2"
+                        color="textSecondary"
+                        sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1.5 }}
+                      >
+                        <LocationOn aria-hidden sx={{ fontSize: 16 }} />
+                        {reservation.estabelecimento?.cidade?.nome} -{' '}
+                        {reservation.estabelecimento?.cidade?.estado}
+                      </Typography>
+
+                      <Divider sx={{ mb: 1.5 }} />
+
+                      <Typography variant="body2" sx={{ fontWeight: 600, mb: 1 }}>
+                        {reservation.quarto?.nome || 'Quarto'}
+                      </Typography>
+
+                      <InfoGrid columns={2} sx={{ mb: 2 }}>
+                        <InfoItem
+                          label="Período"
+                          icon={<CalendarMonth sx={{ fontSize: 14 }} />}
+                          value={
+                            <>
+                              {formatDate(reservation.checkIn)} a {formatDate(reservation.checkOut)}{' '}
+                              <Typography component="span" variant="caption" color="textSecondary">
+                                ({nights} {nights === 1 ? 'noite' : 'noites'})
+                              </Typography>
+                            </>
+                          }
+                        />
+                        <InfoItem
+                          label="Hóspedes"
+                          icon={<People sx={{ fontSize: 14 }} />}
+                          value={`${reservation.adultos} adulto${
+                            reservation.adultos === 1 ? '' : 's'
+                          }${
+                            reservation.criancas > 0
+                              ? ` · ${reservation.criancas} criança${
+                                  reservation.criancas === 1 ? '' : 's'
+                                }`
+                              : ''
+                          }`}
+                        />
+                      </InfoGrid>
+
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'flex-end',
+                          justifyContent: 'space-between',
+                          gap: 1.5,
+                          mt: 'auto',
+                          flexWrap: 'wrap',
+                        }}
+                      >
+                        <Box>
+                          <Typography variant="caption" color="textSecondary" sx={{ display: 'block' }}>
+                            Valor total
+                          </Typography>
+                          <Typography variant="h6" component="p" sx={{ fontWeight: 800 }}>
+                            {formatCurrency(reservation.valorTotal)}
+                          </Typography>
+                          <Box sx={{ mt: 0.5 }}>
+                            <ModoPagamentoChip modo={modoPagamentoDaReserva(reservation)} />
+                          </Box>
+                        </Box>
+
+                        <Box
+                          sx={{
+                            display: 'flex',
+                            gap: 1,
+                            flexWrap: 'wrap',
+                            flexGrow: { xs: 1, sm: 0 },
+                            justifyContent: 'flex-end',
+                          }}
                         >
-                          {reservation.status === 'CONFIRMADA' || reservation.status === 'AGUARDANDO_PAGAMENTO' ? 'Pagar / Detalhes' : 'Ver Detalhes'}
-                        </Button>
+                          {podeCancelar && (
+                            <Button
+                              variant="outlined"
+                              color="error"
+                              size="small"
+                              onClick={() => handleOpenCancel(reservation)}
+                            >
+                              Cancelar
+                            </Button>
+                          )}
+                          <Button
+                            variant="contained"
+                            size="small"
+                            onClick={() => handleOpenDetails(reservation)}
+                          >
+                            {reservation.status === 'CONFIRMADA' ||
+                            reservation.status === 'AGUARDANDO_PAGAMENTO'
+                              ? 'Pagar / Detalhes'
+                              : 'Ver detalhes'}
+                          </Button>
+                        </Box>
                       </Box>
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
-            );
-          })}
-        </Grid>
-      )}
+                    </CardContent>
+                  </Card>
+                </Grid>
+              );
+            })}
+          </Grid>
 
-      {/* Pagination component */}
-      {!isLoading && filteredReservations.length > 0 && (
-        <TablePagination
-          component="div"
-          count={filteredReservations.length}
-          page={page}
-          onPageChange={handleChangePage}
-          rowsPerPage={rowsPerPage}
-          onRowsPerPageChange={handleChangeRowsPerPage}
-          rowsPerPageOptions={[6, 12, 24]}
-          labelRowsPerPage="Itens por página:"
-          labelDisplayedRows={({ from, to, count }) => `${from}-${to} de ${count}`}
-          sx={{ mt: 4 }}
-        />
-      )}
-
-      {/* Cancel Reservation Confirmation Dialog */}
-      <Dialog open={cancelOpen} onClose={() => setCancelOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, color: theme.palette.error.main }}>
-          <WarningAmber /> Cancelar Reserva
-        </DialogTitle>
-        <DialogContent>
-          <DialogContentText sx={{ mb: 2 }}>
-            Você tem certeza que deseja cancelar sua reserva <strong>{reservationToCancel?.codigoReserva}</strong> no{' '}
-            <strong>{reservationToCancel?.estabelecimento?.nome}</strong>? Esta ação é irreversível.
-          </DialogContentText>
-          <TextField
-            autoFocus
-            margin="dense"
-            label="Motivo do Cancelamento (opcional)"
-            fullWidth
-            variant="outlined"
-            value={cancelReason}
-            onChange={(e) => setCancelReason(e.target.value)}
-            slotProps={{
-              input: {
-                sx: { borderRadius: '10px' },
-              },
-            }}
+          <TablePagination
+            component="div"
+            count={filteredReservations.length}
+            page={page}
+            onPageChange={handleChangePage}
+            rowsPerPage={rowsPerPage}
+            onRowsPerPageChange={handleChangeRowsPerPage}
+            rowsPerPageOptions={[6, 12, 24]}
+            labelRowsPerPage="Itens por página:"
+            labelDisplayedRows={({ from, to, count }) => `${from}-${to} de ${count}`}
+            sx={{ mt: 3, '.MuiTablePagination-toolbar': { flexWrap: 'wrap', rowGap: 1 } }}
           />
-        </DialogContent>
-        <DialogActions sx={{ p: 2 }}>
-          <Button onClick={() => setCancelOpen(false)} disabled={cancelling}>
-            Voltar
-          </Button>
-          <Button onClick={handleConfirmCancel} color="error" variant="contained" disabled={cancelling}>
-            {cancelling ? 'Cancelando...' : 'Confirmar Cancelamento'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+        </>
+      )}
 
-      {/* Detailed View & Payment Modal */}
+      {/* Confirmação de cancelamento */}
+      <ConfirmDialog
+        open={cancelOpen}
+        title="Cancelar reserva"
+        description={
+          <>
+            Você tem certeza que deseja cancelar sua reserva{' '}
+            <strong>{reservationToCancel?.codigoReserva}</strong> no{' '}
+            <strong>{reservationToCancel?.estabelecimento?.nome}</strong>? Esta ação é
+            irreversível.
+          </>
+        }
+        confirmLabel="Confirmar cancelamento"
+        cancelLabel="Voltar"
+        tone="error"
+        loading={cancelling}
+        onConfirm={handleConfirmCancel}
+        onClose={() => setCancelOpen(false)}
+      >
+        <TextField
+          autoFocus
+          margin="dense"
+          label="Motivo do cancelamento (opcional)"
+          fullWidth
+          variant="outlined"
+          value={cancelReason}
+          onChange={(e) => setCancelReason(e.target.value)}
+          sx={{ mt: 1 }}
+        />
+      </ConfirmDialog>
+
+      {/* Detalhes da reserva + pagamento */}
       <Dialog
         open={detailsOpen}
         onClose={() => setDetailsOpen(false)}
         maxWidth="md"
         fullWidth
         scroll="paper"
-        slotProps={{
-          paper: {
-            sx: { borderRadius: '16px' },
-          },
-        }}
       >
         <DialogTitle
-          sx={(t) => ({
+          sx={{
             display: 'flex',
             justifyContent: 'space-between',
-            alignItems: 'center',
-            p: 3,
-            borderBottom: `1px solid ${t.palette.divider}`,
-          })}
+            alignItems: 'flex-start',
+            gap: 2,
+          }}
         >
-          <Box>
-            <Typography variant="h5" sx={{ fontWeight: 800, fontFamily: '"Outfit", sans-serif' }}>
-              Detalhes da Reserva
+          <Box sx={{ minWidth: 0 }}>
+            <Typography variant="h5" component="span" sx={{ display: 'block', fontWeight: 700 }}>
+              Detalhes da reserva
             </Typography>
-            <Typography variant="caption" color="text.secondary">
-              Código Único: {selectedReservation?.codigoReserva}
-            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', mt: 1 }}>
+              {selectedReservation && <StatusChip status={selectedReservation.status} />}
+              {selectedReservation && (
+                <ModoPagamentoChip modo={modoPagamentoDaReserva(selectedReservation)} />
+              )}
+              <Typography variant="caption" color="textSecondary">
+                Código {selectedReservation?.codigoReserva}
+              </Typography>
+            </Box>
           </Box>
-          <IconButton onClick={() => setDetailsOpen(false)}>
+          <IconButton onClick={() => setDetailsOpen(false)} aria-label="Fechar detalhes da reserva">
             <Close />
           </IconButton>
         </DialogTitle>
 
-        <DialogContent sx={{ p: 3 }}>
+        <DialogContent sx={{ p: { xs: 2, sm: 3 } }}>
           {selectedReservation && (
             <Grid container spacing={3}>
-              {/* Left Column: Reservation Info */}
+              {/* Coluna esquerda: dados da reserva */}
               <Grid size={{ xs: 12, md: 6 }}>
-                <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Info color="primary" /> Informações Gerais
-                </Typography>
-
-                <Paper
-                  sx={(t) => ({
-                    p: 2.5, mb: 3,
-                    bgcolor: t.palette.mode === 'dark' ? '#243044' : '#F8FAFC',
-                    borderRadius: '12px',
-                    border: `1px solid ${t.palette.divider}`,
-                  })}
-                >
+                <SectionCard title="Informações gerais" contentSx={{ p: 2.5 }}>
                   <Box sx={{ mb: 2 }}>
-                    <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>Hospedagem</Typography>
+                    <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 600 }}>
+                      Hospedagem
+                    </Typography>
                     <Typography variant="body1" sx={{ fontWeight: 700 }}>
                       {selectedReservation.estabelecimento.nome}
                     </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      {selectedReservation.estabelecimento.endereco} - {selectedReservation.estabelecimento.cidade.nome},{' '}
+                    <Typography variant="body2" color="textSecondary">
+                      {selectedReservation.estabelecimento.endereco} -{' '}
+                      {selectedReservation.estabelecimento.cidade.nome},{' '}
                       {selectedReservation.estabelecimento.cidade.estado}
                     </Typography>
                   </Box>
 
-                  <Box sx={{ mb: 2 }}>
-                    <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>Acomodação</Typography>
+                  <InfoGrid columns={2} sx={{ mb: 2 }}>
+                    <InfoItem
+                      label="Check-in"
+                      value={formatDate(selectedReservation.checkIn)}
+                      emphasis
+                    />
+                    <InfoItem
+                      label="Check-out"
+                      value={formatDate(selectedReservation.checkOut)}
+                      emphasis
+                    />
+                    <InfoItem
+                      label="Noites"
+                      value={dayjs(selectedReservation.checkOut).diff(
+                        dayjs(selectedReservation.checkIn),
+                        'day'
+                      )}
+                    />
+                    <InfoItem
+                      label="Hóspedes"
+                      value={`${selectedReservation.adultos} adulto${
+                        selectedReservation.adultos === 1 ? '' : 's'
+                      }${
+                        selectedReservation.criancas > 0
+                          ? ` · ${selectedReservation.criancas} criança${
+                              selectedReservation.criancas === 1 ? '' : 's'
+                            }`
+                          : ''
+                      }`}
+                    />
+                  </InfoGrid>
+
+                  <Box sx={{ mb: selectedReservation.quarto.fotos?.length ? 2 : 0 }}>
+                    <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 600 }}>
+                      Acomodação
+                    </Typography>
                     <Typography variant="body2" sx={{ fontWeight: 600 }}>
                       {selectedReservation.quarto.nome}
                     </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Capacidade Máxima: {selectedReservation.quarto.capacidade} pessoas
-                    </Typography>
-                    {selectedReservation.quarto.fotos && selectedReservation.quarto.fotos.length > 0 && (
-                      <Box sx={{ mt: 1.5 }}>
-                        <ImageList cols={3} gap={4} sx={{ m: 0 }}>
-                          {selectedReservation.quarto.fotos.map((foto) => (
-                            <ImageListItem key={foto.id}>
-                              <img
-                                src={foto.url}
-                                alt={selectedReservation.quarto.nome}
-                                style={{ height: 72, width: '100%', objectFit: 'cover', borderRadius: 6 }}
-                              />
-                            </ImageListItem>
-                          ))}
-                        </ImageList>
-                      </Box>
-                    )}
-                  </Box>
-
-                  <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between' }}>
-                    <Box>
-                      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>Check-in</Typography>
-                      <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                        {dayjs(selectedReservation.checkIn).format('DD/MM/YYYY')}
-                      </Typography>
-                    </Box>
-                    <Box>
-                      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>Check-out</Typography>
-                      <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                        {dayjs(selectedReservation.checkOut).format('DD/MM/YYYY')}
-                      </Typography>
-                    </Box>
-                    <Box>
-                      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>Noites</Typography>
-                      <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                        {dayjs(selectedReservation.checkOut).diff(dayjs(selectedReservation.checkIn), 'day')}
-                      </Typography>
-                    </Box>
-                  </Box>
-
-                  <Box sx={{ mb: 2 }}>
-                    <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>Hóspedes</Typography>
-                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                      {selectedReservation.adultos} Adulto(s) {selectedReservation.criancas > 0 && `e ${selectedReservation.criancas} Criança(s)`}
+                    <Typography variant="body2" color="textSecondary">
+                      Capacidade máxima: {selectedReservation.quarto.capacidade} pessoas
                     </Typography>
                   </Box>
+
+                  {selectedReservation.quarto.fotos && selectedReservation.quarto.fotos.length > 0 && (
+                    <Box
+                      sx={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+                        gap: 1,
+                        mb: 2,
+                      }}
+                    >
+                      {selectedReservation.quarto.fotos.map((foto) => (
+                        <Box
+                          key={foto.id}
+                          component="img"
+                          src={foto.url}
+                          alt={`Foto de ${selectedReservation.quarto.nome}`}
+                          loading="lazy"
+                          sx={{ width: '100%', height: 72, objectFit: 'cover', borderRadius: 1.5 }}
+                        />
+                      ))}
+                    </Box>
+                  )}
 
                   {selectedReservation.observacoes && (
-                    <Box>
-                      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>Observações</Typography>
+                    <Box sx={{ mt: 2 }}>
+                      <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 600 }}>
+                        Observações
+                      </Typography>
                       <Typography variant="body2" sx={{ fontStyle: 'italic' }}>
-                        "{selectedReservation.observacoes}"
+                        “{selectedReservation.observacoes}”
                       </Typography>
                     </Box>
                   )}
-                </Paper>
+                </SectionCard>
 
-                <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Phone color="primary" /> Contato do Estabelecimento
-                </Typography>
-
-                <Paper
-                  sx={(t) => ({
-                    p: 2.5,
-                      bgcolor: t.palette.mode === 'dark' ? '#243044' : '#F8FAFC',
-                    borderRadius: '12px',
-                    border: `1px solid ${t.palette.divider}`,
-                  })}
+                <SectionCard
+                  title="Contato do estabelecimento"
+                  sx={{ mt: 3 }}
+                  contentSx={{ p: 2.5 }}
                 >
                   {selectedReservation.estabelecimento.contato && (
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1.5 }}>
-                      <Phone sx={{ color: 'text.primary', fontSize: 20 }} />
-                      <Typography variant="body2">{selectedReservation.estabelecimento.contato}</Typography>
+                      <Phone aria-hidden sx={{ color: 'text.secondary', fontSize: 20 }} />
+                      <Typography variant="body2">
+                        {selectedReservation.estabelecimento.contato}
+                      </Typography>
                     </Box>
                   )}
                   {selectedReservation.estabelecimento.emailContato && (
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1.5 }}>
-                      <Email sx={{ color: 'text.primary', fontSize: 20 }} />
-                      <Typography variant="body2">{selectedReservation.estabelecimento.emailContato}</Typography>
+                      <Email aria-hidden sx={{ color: 'text.secondary', fontSize: 20 }} />
+                      <Typography variant="body2">
+                        {selectedReservation.estabelecimento.emailContato}
+                      </Typography>
                     </Box>
                   )}
                   {selectedReservation.estabelecimento.website && (
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                      <OpenInNew sx={{ color: 'text.primary', fontSize: 20 }} />
+                      <OpenInNew aria-hidden sx={{ color: 'text.secondary', fontSize: 20 }} />
                       <Typography
                         variant="body2"
                         component="a"
@@ -1010,85 +1120,100 @@ export default function GuestReservations() {
                         }
                         target="_blank"
                         rel="noopener noreferrer"
-                        sx={{ color: theme.palette.primary.main, textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}
+                        sx={{ color: 'primary.main', fontWeight: 600 }}
                       >
-                        Visitar Website
+                        Visitar site
                       </Typography>
                     </Box>
                   )}
-                </Paper>
+                  {!selectedReservation.estabelecimento.contato &&
+                    !selectedReservation.estabelecimento.emailContato &&
+                    !selectedReservation.estabelecimento.website && (
+                      <Typography variant="body2" color="textSecondary">
+                        O estabelecimento não informou canais de contato adicionais.
+                      </Typography>
+                    )}
+                </SectionCard>
               </Grid>
 
-              {/* Right Column: Payment Widget / Status Actions */}
+              {/* Coluna direita: pagamento e status */}
               <Grid size={{ xs: 12, md: 6 }}>
-                <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Payment color="primary" /> Financeiro e Pagamento
-                </Typography>
+                <SectionCard title="Pagamento" contentSx={{ p: 2.5 }}>
+                  <InfoRow
+                    label="Valor total"
+                    value={formatCurrency(selectedReservation.valorTotal)}
+                    emphasis
+                  />
+                  <Divider sx={{ my: 2 }} />
 
-                <Paper sx={(t) => ({ p: 2.5, borderRadius: '12px', border: `1px solid ${t.palette.divider}` })}>
-                  {/* Total amount header */}
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-                    <Typography variant="body1" sx={{ fontWeight: 600 }}>Valor Cobrado</Typography>
-                    <Typography variant="h5" sx={{ fontWeight: 800, color: theme.palette.secondary.main }}>
-                      {formatCurrency(selectedReservation.valorTotal)}
-                    </Typography>
-                  </Box>
-
-                  {/* Flow 1: Reservation Solicited (Waiting approval) */}
+                  {/* Fluxo 1: solicitação aguardando aprovação */}
                   {selectedReservation.status === 'SOLICITADA' && (
-                    <Alert severity="info" icon={<WarningAmber />} sx={{ borderRadius: '8px' }}>
-                      Esta reserva foi solicitada e está aguardando a análise do estabelecimento. Assim que for pré-aprovada, as informações de pagamento serão liberadas.
+                    <Alert severity="info" icon={<WarningAmber />}>
+                      Esta reserva foi solicitada e está aguardando a análise do estabelecimento.
+                      Assim que for pré-aprovada, as informações de pagamento serão liberadas.
                     </Alert>
                   )}
 
-                  {/* Flow 2: Canceled Reservation */}
+                  {/* Fluxo 2: reserva cancelada */}
                   {selectedReservation.status === 'CANCELADA' && (
                     <Box>
-                      <Alert severity="error" icon={<CancelOutlined />} sx={{ borderRadius: '8px', mb: 2 }}>
+                      <Alert severity="error" icon={<CancelOutlined />} sx={{ mb: 2 }}>
                         Reserva cancelada.
                       </Alert>
                       {selectedReservation.cancelamentoMotivo && (
-                        <Paper sx={(t) => ({ p: 2, bgcolor: t.palette.mode === 'dark' ? alpha(t.palette.error.main, 0.12) : '#FFF5F5', color: t.palette.mode === 'dark' ? t.palette.error.light : '#C53030', borderRadius: '8px' })}>
+                        <Box
+                          sx={(t) => ({
+                            p: 2,
+                            borderRadius: 2,
+                            bgcolor: alpha(
+                              t.palette.error.main,
+                              t.palette.mode === 'dark' ? 0.16 : 0.08
+                            ),
+                            border: '1px solid',
+                            borderColor: alpha(t.palette.error.main, 0.24),
+                          })}
+                        >
                           <Typography variant="caption" sx={{ fontWeight: 700, display: 'block' }}>
-                            Motivo do Cancelamento:
+                            Motivo do cancelamento
                           </Typography>
-                          <Typography variant="body2">{selectedReservation.cancelamentoMotivo}</Typography>
-                        </Paper>
+                          <Typography variant="body2">
+                            {selectedReservation.cancelamentoMotivo}
+                          </Typography>
+                        </Box>
                       )}
                     </Box>
                   )}
 
-                  {/* Flow 3: Finalized Reservation */}
+                  {/* Fluxo 3: reserva finalizada */}
                   {selectedReservation.status === 'FINALIZADA' && (
                     <Box>
-                      <Alert severity="success" icon={<CheckCircleOutlined />} sx={{ borderRadius: '8px', mb: 2 }}>
-                        Pagamento recebido e reserva confirmada! 🎉
+                      <Alert severity="success" icon={<CheckCircleOutlined />} sx={{ mb: 2 }}>
+                        Pagamento recebido e reserva finalizada.
                       </Alert>
                       {detailedPayment && (
                         <Box sx={{ mt: 2 }}>
-                          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
-                            Detalhes do Pagamento
+                          <Typography variant="caption" color="textSecondary" sx={{ fontWeight: 600 }}>
+                            Detalhes do pagamento
                           </Typography>
                           <Typography variant="body2" sx={{ fontWeight: 600 }}>
                             Método: {detailedPayment.metodo}
                           </Typography>
                           {detailedPayment.codigoTransacao && (
-                            <Typography variant="body2" color="text.secondary">
+                            <Typography variant="body2" color="textSecondary">
                               Transação: {detailedPayment.codigoTransacao}
                             </Typography>
                           )}
                           {detailedPayment.comprovanteUrl && (
                             <Button
                               variant="outlined"
-                              color="success"
                               size="small"
                               startIcon={<ReceiptLong />}
                               href={detailedPayment.comprovanteUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              sx={{ mt: 2, borderRadius: '8px' }}
+                              sx={{ mt: 2 }}
                             >
-                              Ver Comprovante
+                              Ver comprovante
                             </Button>
                           )}
                         </Box>
@@ -1096,59 +1221,58 @@ export default function GuestReservations() {
                     </Box>
                   )}
 
-                  {/* Flow 4: CONFIRMADA or AGUARDANDO_PAGAMENTO */}
+                  {/* Fluxo 4: confirmada / aguardando pagamento */}
                   {(selectedReservation.status === 'CONFIRMADA' ||
                     selectedReservation.status === 'AGUARDANDO_PAGAMENTO') && (
                     <Box>
-                      {/* Check if payment is already confirmed or comprovante is sent */}
                       {detailedPayment?.status === 'CONFIRMADO' || detailedPayment?.comprovanteUrl ? (
                         <Box sx={{ textAlign: 'center', py: 2 }}>
-                          <CheckCircleOutlined color="success" sx={{ fontSize: 48, mb: 1 }} />
-                          <Typography variant="subtitle1" sx={{ fontWeight: 700, color: 'success.main' }}>
-                            Comprovante Enviado!
+                          <CheckCircleOutlined
+                            color="success"
+                            aria-hidden
+                            sx={{ fontSize: 48, mb: 1 }}
+                          />
+                          <Typography
+                            variant="subtitle1"
+                            sx={{ fontWeight: 700, color: 'success.main' }}
+                          >
+                            Comprovante enviado
                           </Typography>
-                          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                            O estabelecimento está analisando o recibo do seu pagamento. Você será notificado assim que for compensado.
+                          <Typography variant="body2" color="textSecondary" sx={{ mb: 3 }}>
+                            O estabelecimento está analisando o recibo do seu pagamento. Você será
+                            notificado assim que for compensado.
                           </Typography>
                           {detailedPayment?.comprovanteUrl && (
                             <Button
                               variant="outlined"
-                              color="primary"
                               startIcon={<ReceiptLong />}
                               href={detailedPayment.comprovanteUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              sx={{ borderRadius: '8px' }}
                             >
-                              Visualizar Comprovante
+                              Visualizar comprovante
                             </Button>
                           )}
                         </Box>
                       ) : (
-                        // Render payment simulator options
+                        // Opções de pagamento (cartão simulado preservado — ver R-17)
                         <Box>
-                          <Alert severity="warning" icon={<WarningAmber />} sx={{ borderRadius: '8px', mb: 3 }}>
-                            {selectedReservation.estabelecimento?.modoPagamento === 'MERCADO_PAGO'
+                          <Alert severity="warning" icon={<WarningAmber />} sx={{ mb: 3 }}>
+                            {modoPagamentoDaReserva(selectedReservation) === 'MERCADO_PAGO'
                               ? 'Aguardando seu pagamento via Mercado Pago para consolidar a hospedagem.'
                               : 'Aguardando seu pagamento para consolidar a hospedagem. Escolha a forma de pagamento abaixo.'}
                           </Alert>
 
-                          {/* Payment tabs */}
+                          {/* Seleção do método de pagamento */}
                           <Box sx={{ display: 'flex', gap: 1, mb: 3 }}>
                             {(['PIX', 'BOLETO', 'CARTAO'] as const).map((method) => (
                               <Button
                                 key={method}
                                 variant={selectedPaymentMethod === method ? 'contained' : 'outlined'}
-                                color={selectedPaymentMethod === method ? 'primary' : 'primary'}
                                 onClick={() => handlePaymentMethodChange(method)}
-                                sx={{
-                                  flexGrow: 1,
-                                  borderRadius: '8px',
-                                  py: 1,
-                                  px: 0.5,
-                                  fontSize: '0.8rem',
-                                  boxShadow: 'none',
-                                }}
+                                size="small"
+                                aria-pressed={selectedPaymentMethod === method}
+                                sx={{ flexGrow: 1 }}
                               >
                                 {method === 'PIX' ? 'PIX' : method === 'BOLETO' ? 'Boleto' : 'Cartão'}
                               </Button>
@@ -1161,16 +1285,23 @@ export default function GuestReservations() {
                             </Box>
                           )}
 
-                          {/* PIX Method */}
+                          {/* PIX */}
                           {!paymentLoading && selectedPaymentMethod === 'PIX' && (
                             <Box>
-                              {selectedReservation.estabelecimento?.modoPagamento === 'MERCADO_PAGO' ? (
+                              {modoPagamentoDaReserva(selectedReservation) === 'MERCADO_PAGO' ? (
                                 loadingMpCheckout && !mpCheckout?.checkout?.qrCodeBase64 ? (
                                   <Box sx={{ py: 3 }}>
                                     <LinearProgress />
                                   </Box>
                                 ) : mpCheckout?.checkout?.qrCodeBase64 ? (
-                                  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 3 }}>
+                                  <Box
+                                    sx={{
+                                      display: 'flex',
+                                      flexDirection: 'column',
+                                      alignItems: 'center',
+                                      mb: 3,
+                                    }}
+                                  >
                                     <Box
                                       component="img"
                                       src={
@@ -1178,19 +1309,25 @@ export default function GuestReservations() {
                                           ? mpCheckout.checkout.qrCodeBase64
                                           : `data:image/png;base64,${mpCheckout.checkout.qrCodeBase64}`
                                       }
-                                      alt="QR Code Pix Mercado Pago"
+                                      alt="QR Code Pix do Mercado Pago"
                                       sx={{
                                         width: 180,
                                         height: 180,
                                         border: '1px solid',
                                         borderColor: 'divider',
-                                        borderRadius: '12px',
+                                        borderRadius: 2,
                                         p: 1,
                                         mb: 2,
+                                        bgcolor: 'background.paper',
                                       }}
                                     />
-                                    <Typography variant="caption" color="text.secondary" sx={{ mb: 2, textAlign: 'center' }}>
-                                      Escaneie o QR Code com o app do seu banco ou use o código Pix Copia e Cola abaixo.
+                                    <Typography
+                                      variant="caption"
+                                      color="textSecondary"
+                                      sx={{ mb: 2, textAlign: 'center' }}
+                                    >
+                                      Escaneie o QR Code com o app do seu banco ou use o código Pix
+                                      Copia e Cola abaixo.
                                     </Typography>
                                     <Button
                                       variant="outlined"
@@ -1198,12 +1335,16 @@ export default function GuestReservations() {
                                       startIcon={<ContentCopy />}
                                       onClick={handleCopyPix}
                                       fullWidth
-                                      sx={{ borderRadius: '8px' }}
                                     >
-                                      Copiar Código Pix Copia e Cola
+                                      Copiar código Pix Copia e Cola
                                     </Button>
-                                    <Typography variant="caption" color="text.secondary" sx={{ mt: 1.5, textAlign: 'center' }}>
-                                      O pagamento será confirmado automaticamente assim que for compensado.
+                                    <Typography
+                                      variant="caption"
+                                      color="textSecondary"
+                                      sx={{ mt: 1.5, textAlign: 'center' }}
+                                    >
+                                      O pagamento será confirmado automaticamente assim que for
+                                      compensado.
                                     </Typography>
                                   </Box>
                                 ) : (
@@ -1217,22 +1358,34 @@ export default function GuestReservations() {
                                 </Box>
                               ) : (
                                 pixData && (
-                                  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 3 }}>
+                                  <Box
+                                    sx={{
+                                      display: 'flex',
+                                      flexDirection: 'column',
+                                      alignItems: 'center',
+                                      mb: 3,
+                                    }}
+                                  >
                                     <Box
                                       component="img"
                                       src={pixData.qrCode}
-                                      alt="QR Code Pix"
+                                      alt="QR Code Pix para pagamento"
                                       sx={{
                                         width: 160,
                                         height: 160,
                                         border: '1px solid',
                                         borderColor: 'divider',
-                                        borderRadius: '12px',
+                                        borderRadius: 2,
                                         p: 1,
                                         mb: 2,
+                                        bgcolor: 'background.paper',
                                       }}
                                     />
-                                    <Typography variant="caption" color="text.secondary" sx={{ mb: 2, textAlign: 'center' }}>
+                                    <Typography
+                                      variant="caption"
+                                      color="textSecondary"
+                                      sx={{ mb: 2, textAlign: 'center' }}
+                                    >
                                       Escaneie o código com o app do seu banco ou use a chave abaixo.
                                     </Typography>
                                     <Button
@@ -1241,9 +1394,8 @@ export default function GuestReservations() {
                                       startIcon={<ContentCopy />}
                                       onClick={handleCopyPix}
                                       fullWidth
-                                      sx={{ borderRadius: '8px' }}
                                     >
-                                      Copiar Código Pix Copia e Cola
+                                      Copiar código Pix Copia e Cola
                                     </Button>
                                   </Box>
                                 )
@@ -1251,14 +1403,27 @@ export default function GuestReservations() {
                             </Box>
                           )}
 
-                          {/* BOLETO Method */}
+                          {/* BOLETO */}
                           {!paymentLoading && selectedPaymentMethod === 'BOLETO' && (
                             <Box sx={{ mb: 3 }}>
-                              {selectedReservation.estabelecimento?.modoPagamento === 'MERCADO_PAGO' ? (
+                              {modoPagamentoDaReserva(selectedReservation) === 'MERCADO_PAGO' ? (
                                 <>
-                                  <Paper sx={(t) => ({ p: 2.5, bgcolor: t.palette.mode === 'dark' ? 'rgba(255,255,255,0.06)' : '#F8FAFC', border: `1px dashed ${t.palette.divider}`, borderRadius: '8px', mb: 2 })}>
-                                    <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
-                                      Linha Digitável do Boleto
+                                  <Box
+                                    sx={{
+                                      p: 2.5,
+                                      mb: 2,
+                                      borderRadius: 2,
+                                      bgcolor: 'action.hover',
+                                      border: '1px dashed',
+                                      borderColor: 'divider',
+                                    }}
+                                  >
+                                    <Typography
+                                      variant="caption"
+                                      color="textSecondary"
+                                      sx={{ fontWeight: 600 }}
+                                    >
+                                      Linha digitável do boleto
                                     </Typography>
                                     {mpCheckout?.checkout?.boletoBarcode ? (
                                       <Typography
@@ -1278,14 +1443,22 @@ export default function GuestReservations() {
                                         <LinearProgress />
                                       </Box>
                                     ) : (
-                                      <Typography variant="body2" color="text.secondary" sx={{ my: 1.5 }}>
-                                        Aguardando a geração do boleto...
+                                      <Typography
+                                        variant="body2"
+                                        color="textSecondary"
+                                        sx={{ my: 1.5 }}
+                                      >
+                                        Aguardando a geração do boleto…
                                       </Typography>
                                     )}
-                                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                                    <Typography
+                                      variant="caption"
+                                      color="textSecondary"
+                                      sx={{ display: 'block' }}
+                                    >
                                       Vencimento: em até 3 dias úteis.
                                     </Typography>
-                                  </Paper>
+                                  </Box>
                                   {mpCheckout?.checkout?.boletoUrl && (
                                     <Button
                                       component="a"
@@ -1293,13 +1466,12 @@ export default function GuestReservations() {
                                       target="_blank"
                                       rel="noopener noreferrer"
                                       variant="contained"
-                                      color="primary"
                                       size="small"
                                       startIcon={<OpenInNew />}
                                       fullWidth
-                                      sx={{ borderRadius: '8px', mb: 1.5 }}
+                                      sx={{ mb: 1.5 }}
                                     >
-                                      Abrir Boleto no Banco
+                                      Abrir boleto no banco
                                     </Button>
                                   )}
                                   <Button
@@ -1308,16 +1480,28 @@ export default function GuestReservations() {
                                     startIcon={<ContentCopy />}
                                     onClick={handleCopyBoleto}
                                     fullWidth
-                                    sx={{ borderRadius: '8px' }}
                                   >
-                                    Copiar Linha Digitável
+                                    Copiar linha digitável
                                   </Button>
                                 </>
                               ) : (
                                 <>
-                                  <Paper sx={(t) => ({ p: 2.5, bgcolor: t.palette.mode === 'dark' ? 'rgba(255,255,255,0.06)' : '#F8FAFC', border: `1px dashed ${t.palette.divider}`, borderRadius: '8px', mb: 2 })}>
-                                    <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
-                                      Linha Digitável do Boleto
+                                  <Box
+                                    sx={{
+                                      p: 2.5,
+                                      mb: 2,
+                                      borderRadius: 2,
+                                      bgcolor: 'action.hover',
+                                      border: '1px dashed',
+                                      borderColor: 'divider',
+                                    }}
+                                  >
+                                    <Typography
+                                      variant="caption"
+                                      color="textSecondary"
+                                      sx={{ fontWeight: 600 }}
+                                    >
+                                      Linha digitável do boleto
                                     </Typography>
                                     <Typography
                                       variant="body2"
@@ -1331,41 +1515,43 @@ export default function GuestReservations() {
                                     >
                                       34191.79001 01043.513184 91020.150008 7 98760000015000
                                     </Typography>
-                                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                                    <Typography
+                                      variant="caption"
+                                      color="textSecondary"
+                                      sx={{ display: 'block' }}
+                                    >
                                       Vencimento: em até 3 dias úteis.
                                     </Typography>
-                                  </Paper>
+                                  </Box>
                                   <Button
                                     variant="outlined"
                                     size="small"
                                     startIcon={<ContentCopy />}
                                     onClick={handleCopyBoleto}
                                     fullWidth
-                                    sx={{ borderRadius: '8px' }}
                                   >
-                                    Copiar Linha Digitável
+                                    Copiar linha digitável
                                   </Button>
                                 </>
                               )}
                             </Box>
                           )}
 
-                          {/* CREDIT CARD Method */}
+                          {/* CARTÃO */}
                           {!paymentLoading && selectedPaymentMethod === 'CARTAO' && (
                             <Box sx={{ mb: 3 }}>
-                              {selectedReservation.estabelecimento?.modoPagamento === 'MERCADO_PAGO' ? (
+                              {modoPagamentoDaReserva(selectedReservation) === 'MERCADO_PAGO' ? (
                                 <>
-                                  <Alert severity="info" icon={<Payment />} sx={{ borderRadius: '8px', mb: 2 }}>
-                                    Você será redirecionado para o ambiente seguro do Mercado Pago para pagar com cartão de crédito.
+                                  <Alert severity="info" icon={<Payment />} sx={{ mb: 2 }}>
+                                    Você será redirecionado para o ambiente seguro do Mercado Pago
+                                    para pagar com cartão de crédito.
                                   </Alert>
                                   <Button
                                     variant="contained"
-                                    color="primary"
                                     fullWidth
                                     disabled={loadingMpCheckout}
                                     onClick={handleOpenMpCard}
                                     startIcon={!loadingMpCheckout ? <Payment /> : undefined}
-                                    sx={{ borderRadius: '8px', py: 1 }}
                                   >
                                     {loadingMpCheckout ? (
                                       <CircularProgress size={20} color="inherit" />
@@ -1373,150 +1559,165 @@ export default function GuestReservations() {
                                       'Pagar com Cartão via Mercado Pago'
                                     )}
                                   </Button>
-                                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1.5, textAlign: 'center', display: 'block' }}>
+                                  <Typography
+                                    variant="caption"
+                                    color="textSecondary"
+                                    sx={{ mt: 1.5, textAlign: 'center', display: 'block' }}
+                                  >
                                     Depois de pagar, volte a esta página para ver o status atualizado.
                                   </Typography>
                                 </>
                               ) : (
-                              <>
-                              <Grid container spacing={1.5} sx={{ mb: 2 }}>
-                                <Grid size={{ xs: 12 }}>
-                                  <TextField
-                                    label="Nome do Titular"
-                                    size="small"
+                                <>
+                                  {/*
+                                   * Formulário de cartão simulado — risco R-17 em aberto.
+                                   * Comportamento preservado: apenas reestilização.
+                                   */}
+                                  <Grid container spacing={1.5} sx={{ mb: 2 }}>
+                                    <Grid size={{ xs: 12 }}>
+                                      <TextField
+                                        label="Nome do Titular"
+                                        size="small"
+                                        fullWidth
+                                        value={cardName}
+                                        onChange={(e) => setCardName(e.target.value)}
+                                      />
+                                    </Grid>
+                                    <Grid size={{ xs: 12 }}>
+                                      <TextField
+                                        label="Número do Cartão"
+                                        size="small"
+                                        fullWidth
+                                        placeholder="4000 1234 5678 9010"
+                                        value={cardNumber}
+                                        onChange={(e) => setCardNumber(e.target.value)}
+                                      />
+                                    </Grid>
+                                    <Grid size={{ xs: 6 }}>
+                                      <TextField
+                                        label="Validade"
+                                        size="small"
+                                        fullWidth
+                                        placeholder="MM/AA"
+                                        value={cardExpiry}
+                                        onChange={(e) => setCardExpiry(e.target.value)}
+                                      />
+                                    </Grid>
+                                    <Grid size={{ xs: 6 }}>
+                                      <TextField
+                                        label="CVV"
+                                        size="small"
+                                        fullWidth
+                                        placeholder="123"
+                                        value={cardCvv}
+                                        onChange={(e) => setCardCvv(e.target.value)}
+                                      />
+                                    </Grid>
+                                  </Grid>
+                                  <Button
+                                    variant="contained"
+                                    color="secondary"
                                     fullWidth
-                                    value={cardName}
-                                    onChange={(e) => setCardName(e.target.value)}
-                                    slotProps={{ input: { sx: { borderRadius: '8px' } } }}
-                                  />
-                                </Grid>
-                                <Grid size={{ xs: 12 }}>
-                                  <TextField
-                                    label="Número do Cartão"
-                                    size="small"
-                                    fullWidth
-                                    placeholder="4000 1234 5678 9010"
-                                    value={cardNumber}
-                                    onChange={(e) => setCardNumber(e.target.value)}
-                                    slotProps={{ input: { sx: { borderRadius: '8px' } } }}
-                                  />
-                                </Grid>
-                                <Grid size={{ xs: 6 }}>
-                                  <TextField
-                                    label="Validade"
-                                    size="small"
-                                    fullWidth
-                                    placeholder="MM/AA"
-                                    value={cardExpiry}
-                                    onChange={(e) => setCardExpiry(e.target.value)}
-                                    slotProps={{ input: { sx: { borderRadius: '8px' } } }}
-                                  />
-                                </Grid>
-                                <Grid size={{ xs: 6 }}>
-                                  <TextField
-                                    label="CVV"
-                                    size="small"
-                                    fullWidth
-                                    placeholder="123"
-                                    value={cardCvv}
-                                    onChange={(e) => setCardCvv(e.target.value)}
-                                    slotProps={{ input: { sx: { borderRadius: '8px' } } }}
-                                  />
-                                </Grid>
-                              </Grid>
-                              <Button
-                                variant="contained"
-                                color="secondary"
-                                fullWidth
-                                disabled={cardSubmitting}
-                                onClick={handleCreditCardPay}
-                                sx={{ borderRadius: '8px', py: 1 }}
-                              >
-                                {cardSubmitting ? (
-                                  <CircularProgress size={20} color="inherit" />
-                                ) : (
-                                  'Simular Pagamento com Cartão'
-                                )}
-                              </Button>
-                              </>
+                                    disabled={cardSubmitting}
+                                    onClick={handleCreditCardPay}
+                                  >
+                                    {cardSubmitting ? (
+                                      <CircularProgress size={20} color="inherit" />
+                                    ) : (
+                                      'Simular Pagamento com Cartão'
+                                    )}
+                                  </Button>
+                                </>
                               )}
                             </Box>
                           )}
 
-                          {selectedReservation.estabelecimento?.modoPagamento !== 'MERCADO_PAGO' &&
-                            (selectedPaymentMethod === 'PIX' || selectedPaymentMethod === 'BOLETO') && (
-                            <>
-                              <Divider sx={{ my: 3 }} />
+                          {modoPagamentoDaReserva(selectedReservation) !== 'MERCADO_PAGO' &&
+                            (selectedPaymentMethod === 'PIX' ||
+                              selectedPaymentMethod === 'BOLETO') && (
+                              <>
+                                <Divider sx={{ my: 3 }} />
 
-                              <Typography variant="body2" sx={{ fontWeight: 700, mb: 1.5 }}>
-                                Enviar Comprovante (Obrigatório para {selectedPaymentMethod === 'PIX' ? 'PIX' : 'Boleto'})
-                              </Typography>
-
-                              <Box
-                                sx={(t) => ({
-                                  border: '2px dashed',
-                                  borderColor: t.palette.mode === 'dark' ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.12)',
-                                  borderRadius: '12px',
-                                  p: 3,
-                                  textAlign: 'center',
-                                  bgcolor: t.palette.mode === 'dark' ? 'rgba(255,255,255,0.04)' : '#F8FAFC',
-                                  cursor: 'pointer',
-                                  transition: 'all 0.2s',
-                                  display: 'flex',
-                                  flexDirection: 'column',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  minHeight: 100,
-                                  '&:hover': {
-                                    borderColor: theme.palette.primary.main,
-                                    bgcolor: alpha(theme.palette.primary.main, 0.02),
-                                  },
-                                })}
-                                component="label"
-                              >
-                                <input
-                                  type="file"
-                                  accept="image/*,application/pdf"
-                                  hidden
-                                  onChange={handleFileChange}
-                                />
-                                <CloudUpload color="primary" sx={{ fontSize: 36, mb: 1 }} />
-                                <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                                  {selectedFile ? selectedFile.name : 'Clique para selecionar o arquivo'}
+                                <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5 }}>
+                                  Enviar comprovante (obrigatório para{' '}
+                                  {selectedPaymentMethod === 'PIX' ? 'PIX' : 'boleto'})
                                 </Typography>
-                                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
-                                  Suporta imagens (PNG, JPG) ou PDFs de até 5MB.
-                                </Typography>
-                              </Box>
 
-                              {selectedFile && (
-                                <Button
-                                  variant="contained"
-                                  color="primary"
-                                  fullWidth
-                                  sx={{ mt: 2, borderRadius: '8px', py: 1.2 }}
-                                  onClick={handleUploadComprovante}
-                                  disabled={uploadingComprovante}
+                                <Box
+                                  component="label"
+                                  sx={{
+                                    border: '2px dashed',
+                                    borderColor: 'divider',
+                                    borderRadius: 2,
+                                    p: 3,
+                                    textAlign: 'center',
+                                    bgcolor: 'action.hover',
+                                    cursor: 'pointer',
+                                    transition: 'border-color 180ms, background-color 180ms',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    minHeight: 100,
+                                    '&:hover': {
+                                      borderColor: 'primary.main',
+                                      bgcolor: 'action.selected',
+                                    },
+                                  }}
                                 >
-                                  {uploadingComprovante ? (
-                                    <CircularProgress size={20} color="inherit" />
-                                  ) : (
-                                    'Enviar Comprovante de Pagamento'
-                                  )}
-                                </Button>
-                              )}
-                            </>
-                          )}
+                                  <input
+                                    type="file"
+                                    accept="image/*,application/pdf"
+                                    hidden
+                                    onChange={handleFileChange}
+                                    aria-label="Selecionar comprovante de pagamento"
+                                  />
+                                  <CloudUpload
+                                    color="primary"
+                                    aria-hidden
+                                    sx={{ fontSize: 36, mb: 1 }}
+                                  />
+                                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                    {selectedFile
+                                      ? selectedFile.name
+                                      : 'Clique para selecionar o arquivo'}
+                                  </Typography>
+                                  <Typography
+                                    variant="caption"
+                                    color="textSecondary"
+                                    sx={{ mt: 0.5 }}
+                                  >
+                                    Suporta imagens (PNG, JPG) ou PDFs de até 5MB.
+                                  </Typography>
+                                </Box>
+
+                                {selectedFile && (
+                                  <Button
+                                    variant="contained"
+                                    fullWidth
+                                    sx={{ mt: 2 }}
+                                    onClick={handleUploadComprovante}
+                                    disabled={uploadingComprovante}
+                                  >
+                                    {uploadingComprovante ? (
+                                      <CircularProgress size={20} color="inherit" />
+                                    ) : (
+                                      'Enviar Comprovante de Pagamento'
+                                    )}
+                                  </Button>
+                                )}
+                              </>
+                            )}
                         </Box>
                       )}
                     </Box>
                   )}
-                </Paper>
+                </SectionCard>
               </Grid>
             </Grid>
           )}
         </DialogContent>
-        <DialogActions sx={(t) => ({ p: 3, borderTop: `1px solid ${t.palette.divider}` })}>
+        <DialogActions sx={{ p: { xs: 2, sm: 3 } }}>
           {selectedReservation &&
             (selectedReservation.status === 'SOLICITADA' ||
               selectedReservation.status === 'CONFIRMADA' ||
@@ -1526,14 +1727,14 @@ export default function GuestReservations() {
                 variant="outlined"
                 onClick={() => handleOpenCancel(selectedReservation)}
               >
-                Cancelar Reserva
+                Cancelar reserva
               </Button>
             )}
-          <Button onClick={() => setDetailsOpen(false)} variant="contained" color="primary">
-            Fechar Detalhes
+          <Button onClick={() => setDetailsOpen(false)} variant="contained">
+            Fechar detalhes
           </Button>
         </DialogActions>
       </Dialog>
-    </Box>
+    </PageContainer>
   );
 }

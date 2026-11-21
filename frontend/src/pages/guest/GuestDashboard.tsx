@@ -5,15 +5,11 @@ import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Typography,
-  Paper,
   Button,
   Grid,
-  CircularProgress,
-  Card,
-  CardContent,
   CardMedia,
   Avatar,
-  Chip,
+  Divider,
 } from '@mui/material';
 import {
   Refresh,
@@ -28,8 +24,18 @@ import {
   EventAvailable,
   Place,
   Star,
-  TrendingUp,
 } from '@mui/icons-material';
+import {
+  EmptyState,
+  ErrorState,
+  PageContainer,
+  PageHeader,
+  PageLoading,
+  SectionCard,
+  StatCard,
+  StatusChip,
+} from '../../components/common';
+import { formatCurrency, formatDate } from '../../theme/tokens';
 import { reservationsApi, favoritesApi } from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
 import toast from 'react-hot-toast';
@@ -66,14 +72,6 @@ interface FavoriteItem {
   };
 }
 
-const statusChipConfig: Record<string, { label: string; color: 'info' | 'warning' | 'success' | 'error' }> = {
-  SOLICITADA:           { label: 'Solicitada',           color: 'info' },
-  CONFIRMADA:           { label: 'Confirmada',           color: 'warning' },
-  AGUARDANDO_PAGAMENTO: { label: 'Aguard. Pagamento',    color: 'warning' },
-  FINALIZADA:           { label: 'Finalizada',           color: 'success' },
-  CANCELADA:            { label: 'Cancelada',            color: 'error' },
-};
-
 export default function GuestDashboard() {
   const { user } = useAuthStore();
   const navigate = useNavigate();
@@ -81,6 +79,7 @@ export default function GuestDashboard() {
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [favorites, setFavorites] = useState<FavoriteItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -88,6 +87,8 @@ export default function GuestDashboard() {
 
   const loadData = async () => {
     try {
+      setLoading(true);
+      setError(false);
       const [reservRes, favRes] = await Promise.all([
         reservationsApi.getAll({ limit: 1000 }),
         favoritesApi.getAll(),
@@ -97,14 +98,12 @@ export default function GuestDashboard() {
       setFavorites(favRes.data?.data || favRes.data || []);
     } catch (err) {
       console.error(err);
+      setError(true);
       toast.error('Erro ao carregar dados');
     } finally {
       setLoading(false);
     }
   };
-
-  const formatCurrency = (value: number | string) =>
-    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(value));
 
   const now = dayjs();
 
@@ -117,6 +116,9 @@ export default function GuestDashboard() {
     .slice(0, 5);
 
   const nextReservation = upcoming[0];
+  const nextTripInDays = nextReservation
+    ? Math.max(1, dayjs(nextReservation.checkIn).startOf('day').diff(dayjs().startOf('day'), 'day'))
+    : 0;
 
   const totalReservations = reservations.length;
   const activeCount = reservations.filter(
@@ -124,384 +126,436 @@ export default function GuestDashboard() {
   ).length;
   const finalizedCount = reservations.filter((r) => r.status === 'FINALIZADA').length;
 
-  const getCapaUrl = (est: any) => {
-    const capa = est?.fotos?.find((f: any) => f.isCapa);
+  const getCapaUrl = (est: Reservation['estabelecimento'] | undefined) => {
+    const capa = est?.fotos?.find((f) => f.isCapa);
     return capa?.url || est?.fotos?.[0]?.url || '';
   };
 
-  if (loading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '80vh' }}>
-        <CircularProgress />
-      </Box>
-    );
-  }
+  const firstName = user?.nome?.split(' ')[0] || 'Hóspede';
+  const todayLabel = dayjs().format('dddd, D [de] MMMM [de] YYYY');
+  const today = todayLabel.charAt(0).toUpperCase() + todayLabel.slice(1);
 
   return (
-    <Box sx={{ p: 4, maxWidth: 1200, margin: '0 auto' }}>
-      {/* Header */}
-      <Box sx={{ mb: 4, display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', gap: 2 }}>
-        <Box>
-          <Typography variant="h4" sx={{ fontFamily: '"Outfit", sans-serif', fontWeight: 800, mb: 0.5 }}>
-            Olá, {user?.nome?.split(' ')[0] || 'Hóspede'}!
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ textTransform: 'capitalize' }}>
-            {dayjs().format('dddd, D [de] MMMM [de] YYYY')}
-          </Typography>
-        </Box>
-        <Button
-          variant="outlined"
-          startIcon={<Refresh />}
-          onClick={loadData}
-          sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 600 }}
-        >
-          Atualizar
-        </Button>
-      </Box>
+    <PageContainer maxWidth="content">
+      <PageHeader
+        icon={<EventAvailable />}
+        overline="Área do hóspede"
+        title={`Olá, ${firstName}`}
+        subtitle={`${today}. Aqui está o resumo das suas viagens e reservas.`}
+        actions={
+          <>
+            <Button
+              variant="outlined"
+              startIcon={<Refresh />}
+              onClick={loadData}
+              disabled={loading}
+            >
+              Atualizar
+            </Button>
+            <Button
+              variant="contained"
+              startIcon={<Search />}
+              onClick={() => navigate('/busca')}
+            >
+              Buscar hospedagens
+            </Button>
+          </>
+        }
+      />
 
-      {/* Quick Stats */}
-      <Grid container spacing={2.5} sx={{ mb: 4 }}>
-        <Grid size={{ xs: 6, md: 3 }}>
-          <Paper sx={{ p: 2.5, borderRadius: '16px', border: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', gap: 2, height: '100%' }}>
-            <Avatar sx={{ bgcolor: 'rgba(0,151,167,0.15)', color: '#0097A7', width: 44, height: 44 }}>
-              <CalendarMonth sx={{ fontSize: 22 }} />
-            </Avatar>
-            <Box>
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.25 }}>Total de Reservas</Typography>
-              <Typography variant="h6" sx={{ fontWeight: 700 }}>{totalReservations}</Typography>
-            </Box>
-          </Paper>
-        </Grid>
-        <Grid size={{ xs: 6, md: 3 }}>
-          <Paper sx={{ p: 2.5, borderRadius: '16px', border: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', gap: 2, height: '100%' }}>
-            <Avatar sx={{ bgcolor: 'rgba(245,158,11,0.15)', color: '#F59E0B', width: 44, height: 44 }}>
-              <Schedule sx={{ fontSize: 22 }} />
-            </Avatar>
-            <Box>
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.25 }}>Ativas</Typography>
-              <Typography variant="h6" sx={{ fontWeight: 700 }}>{activeCount}</Typography>
-            </Box>
-          </Paper>
-        </Grid>
-        <Grid size={{ xs: 6, md: 3 }}>
-          <Paper sx={{ p: 2.5, borderRadius: '16px', border: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', gap: 2, height: '100%' }}>
-            <Avatar sx={{ bgcolor: 'rgba(16,185,129,0.15)', color: '#10B981', width: 44, height: 44 }}>
-              <CheckCircle sx={{ fontSize: 22 }} />
-            </Avatar>
-            <Box>
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.25 }}>Finalizadas</Typography>
-              <Typography variant="h6" sx={{ fontWeight: 700 }}>{finalizedCount}</Typography>
-            </Box>
-          </Paper>
-        </Grid>
-        <Grid size={{ xs: 6, md: 3 }}>
-          <Paper sx={{ p: 2.5, borderRadius: '16px', border: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', gap: 2, height: '100%' }}>
-            <Avatar sx={{ bgcolor: 'rgba(239,68,68,0.15)', color: '#EF4444', width: 44, height: 44 }}>
-              <Favorite sx={{ fontSize: 22 }} />
-            </Avatar>
-            <Box>
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.25 }}>Favoritos</Typography>
-              <Typography variant="h6" sx={{ fontWeight: 700 }}>{favorites.length}</Typography>
-            </Box>
-          </Paper>
-        </Grid>
-      </Grid>
-
-      <Grid container spacing={3}>
-        {/* Next Stay */}
-        <Grid size={{ xs: 12, md: 5 }}>
-          {nextReservation ? (
-            <Paper sx={{ borderRadius: '20px', overflow: 'hidden', border: '1px solid', borderColor: 'divider', height: '100%', position: 'relative' }}>
-              {getCapaUrl(nextReservation.estabelecimento) && (
-                <Box
-                  component="img"
-                  src={getCapaUrl(nextReservation.estabelecimento)}
-                  alt=""
-                  sx={{ width: '100%', height: 160, objectFit: 'cover', display: 'block' }}
-                />
-              )}
-              <Box sx={{ p: 3 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1 }}>
-                  <EventAvailable sx={{ fontSize: 18, color: 'primary.main' }} />
-                  <Typography variant="caption" sx={{ fontWeight: 600, color: 'primary.main', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    Próxima Estada
-                  </Typography>
-                </Box>
-                <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>
-                  {nextReservation.estabelecimento?.nome || 'Estabelecimento'}
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                  {nextReservation.quarto?.nome} · {nextReservation.estabelecimento?.cidade?.nome}, {nextReservation.estabelecimento?.cidade?.estado}
-                </Typography>
-                <Box sx={{ display: 'flex', gap: 3, mb: 2 }}>
-                  <Box>
-                    <Typography variant="caption" color="text.secondary">Check-in</Typography>
-                    <Typography variant="body2" sx={{ fontWeight: 600 }}>{dayjs(nextReservation.checkIn).format('DD/MM/YYYY')}</Typography>
-                  </Box>
-                  <Box>
-                    <Typography variant="caption" color="text.secondary">Check-out</Typography>
-                    <Typography variant="body2" sx={{ fontWeight: 600 }}>{dayjs(nextReservation.checkOut).format('DD/MM/YYYY')}</Typography>
-                  </Box>
-                </Box>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Typography variant="body1" sx={{ fontWeight: 700, color: 'primary.main' }}>
-                    {formatCurrency(nextReservation.valorTotal)}
-                  </Typography>
-                  <Chip
-                    label={statusChipConfig[nextReservation.status]?.label || nextReservation.status}
-                    size="small"
-                    color={statusChipConfig[nextReservation.status]?.color || 'default'}
-                    sx={{ borderRadius: '6px', fontWeight: 600, fontSize: '0.7rem' }}
-                  />
-                </Box>
-                <Button
-                  fullWidth
-                  variant="outlined"
-                  sx={{ mt: 2, borderRadius: '10px', textTransform: 'none', fontWeight: 600 }}
-                  onClick={() => navigate('/hospede/reservas')}
-                >
-                  Ver detalhes da reserva
-                </Button>
-              </Box>
-            </Paper>
-          ) : (
-            <Paper sx={{ p: 4, borderRadius: '20px', border: '1px dashed', borderColor: 'divider', textAlign: 'center', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
-              <Hotel sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
-              <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>Nenhuma estada futura</Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                Explore hospedagens e planeje sua próxima viagem.
-              </Typography>
-              <Button
-                variant="contained"
-                startIcon={<Search />}
-                onClick={() => navigate('/busca')}
-                sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 600, background: 'linear-gradient(135deg, #0097A7, #00BCD4)' }}
-              >
-                Buscar Hospedagens
-              </Button>
-            </Paper>
-          )}
-        </Grid>
-
-        {/* Recent Reservations */}
-        <Grid size={{ xs: 12, md: 7 }}>
-          <Paper sx={{ p: 3, borderRadius: '20px', border: '1px solid', borderColor: 'divider', height: '100%' }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-              <Typography variant="h6" sx={{ fontFamily: '"Outfit", sans-serif', fontWeight: 700 }}>
-                Reservas Recentes
-              </Typography>
-              <Button
-                size="small"
-                endIcon={<ArrowForward />}
+      {loading ? (
+        <PageLoading label="Carregando seu painel…" minHeight="40vh" />
+      ) : error ? (
+        <ErrorState
+          title="Não foi possível carregar seu painel"
+          description="Verifique sua conexão e tente novamente."
+          onRetry={loadData}
+        />
+      ) : (
+        <>
+          {/* Indicadores — todos derivados das reservas e favoritos reais */}
+          <Grid container spacing={2.5} sx={{ mb: 4 }}>
+            <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
+              <StatCard
+                label="Próxima viagem"
+                value={
+                  nextReservation
+                    ? `${nextTripInDays} ${nextTripInDays === 1 ? 'dia' : 'dias'}`
+                    : '—'
+                }
+                icon={<EventAvailable />}
+                tone="primary"
+                hint={
+                  nextReservation
+                    ? `${nextReservation.estabelecimento?.nome || 'Estabelecimento'} · ${formatDate(
+                        nextReservation.checkIn,
+                      )}`
+                    : 'Nenhuma estada futura agendada'
+                }
                 onClick={() => navigate('/hospede/reservas')}
-                sx={{ textTransform: 'none', fontWeight: 600, borderRadius: '8px' }}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
+              <StatCard
+                label="Reservas ativas"
+                value={activeCount}
+                icon={<Schedule />}
+                tone="warning"
+                hint={`${totalReservations} reserva${totalReservations === 1 ? '' : 's'} no total`}
+                onClick={() => navigate('/hospede/reservas')}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
+              <StatCard
+                label="Finalizadas"
+                value={finalizedCount}
+                icon={<CheckCircle />}
+                tone="success"
+                hint="Estadias concluídas"
+                onClick={() => navigate('/hospede/reservas')}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
+              <StatCard
+                label="Favoritos"
+                value={favorites.length}
+                icon={<Favorite />}
+                tone="secondary"
+                hint="Estabelecimentos salvos"
+                onClick={() => navigate('/hospede/favoritos')}
+              />
+            </Grid>
+          </Grid>
+
+          <Grid container spacing={3}>
+            {/* Próximas viagens */}
+            <Grid size={{ xs: 12, md: 7 }}>
+              <SectionCard
+                title="Próximas viagens"
+                subtitle="Suas próximas estadias, ordenadas pela data de check-in."
+                action={
+                  upcoming.length > 0 ? (
+                    <Button
+                      size="small"
+                      endIcon={<ArrowForward />}
+                      onClick={() => navigate('/hospede/reservas')}
+                    >
+                      Ver todas
+                    </Button>
+                  ) : undefined
+                }
+                sx={{ height: '100%' }}
               >
-                Ver todas
-              </Button>
-            </Box>
-
-            {recent.length === 0 ? (
-              <Box sx={{ py: 4, textAlign: 'center' }}>
-                <Typography color="text.secondary">Você ainda não possui reservas.</Typography>
-              </Box>
-            ) : (
-              recent.map((res) => (
-                <Box
-                  key={res.id}
-                  sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 2,
-                    py: 1.5,
-                    borderBottom: '1px solid',
-                    borderColor: 'divider',
-                    '&:last-child': { borderBottom: 'none' },
-                  }}
-                >
-                  <Avatar src={getCapaUrl(res.estabelecimento)} variant="rounded" sx={{ width: 44, height: 44 }}>
-                    <Hotel />
-                  </Avatar>
-                  <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                      {res.estabelecimento?.nome || 'Estabelecimento'}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {res.quarto?.nome || 'Quarto'} · {dayjs(res.checkIn).format('DD/MM')} - {dayjs(res.checkOut).format('DD/MM')}
-                    </Typography>
-                  </Box>
-                  <Box sx={{ textAlign: 'right' }}>
-                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                      {formatCurrency(res.valorTotal)}
-                    </Typography>
-                  </Box>
-                  <Chip
-                    label={statusChipConfig[res.status]?.label || res.status}
-                    size="small"
-                    color={statusChipConfig[res.status]?.color || 'default'}
-                    sx={{ borderRadius: '6px', fontWeight: 600, fontSize: '0.7rem' }}
+                {upcoming.length === 0 ? (
+                  <EmptyState
+                    compact
+                    icon={<Hotel />}
+                    title="Nenhuma estada futura"
+                    description="Explore hospedagens no Rio Grande do Norte e planeje sua próxima viagem."
+                    action={
+                      <Button variant="contained" startIcon={<Search />} onClick={() => navigate('/busca')}>
+                        Buscar hospedagens
+                      </Button>
+                    }
                   />
-                </Box>
-              ))
-            )}
-          </Paper>
-        </Grid>
+                ) : (
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    {upcoming.slice(0, 3).map((res) => {
+                      const cover = getCapaUrl(res.estabelecimento);
+                      const nights = Math.max(
+                        1,
+                        dayjs(res.checkOut).diff(dayjs(res.checkIn), 'day'),
+                      );
 
-        {/* Upcoming Stays */}
-        <Grid size={{ xs: 12 }}>
-          <Paper sx={{ p: 3, borderRadius: '20px', border: '1px solid', borderColor: 'divider' }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-              <Typography variant="h6" sx={{ fontFamily: '"Outfit", sans-serif', fontWeight: 700 }}>
-                Próximas Estadas
-              </Typography>
-              {upcoming.length > 3 && (
-                <Button
-                  size="small"
-                  endIcon={<ArrowForward />}
-                  onClick={() => navigate('/hospede/reservas')}
-                  sx={{ textTransform: 'none', fontWeight: 600, borderRadius: '8px' }}
-                >
-                  Ver todas ({upcoming.length})
-                </Button>
-              )}
-            </Box>
+                      return (
+                        <Box
+                          key={res.id}
+                          sx={{
+                            display: 'flex',
+                            flexDirection: { xs: 'column', sm: 'row' },
+                            border: '1px solid',
+                            borderColor: 'divider',
+                            borderRadius: 3,
+                            overflow: 'hidden',
+                            transition: 'border-color 180ms',
+                            '&:hover': { borderColor: 'primary.main' },
+                          }}
+                        >
+                          <Box
+                            sx={{
+                              width: { xs: '100%', sm: 132 },
+                              minWidth: { xs: '100%', sm: 132 },
+                              height: { xs: 140, sm: 'auto' },
+                              flexShrink: 0,
+                              bgcolor: 'action.hover',
+                            }}
+                          >
+                            {cover ? (
+                              <CardMedia
+                                component="img"
+                                image={cover}
+                                alt={`Foto de ${res.estabelecimento?.nome || 'estabelecimento'}`}
+                                loading="lazy"
+                                sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                              />
+                            ) : (
+                              <Box
+                                sx={{
+                                  width: '100%',
+                                  height: '100%',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  color: 'text.disabled',
+                                }}
+                              >
+                                <Hotel aria-hidden />
+                              </Box>
+                            )}
+                          </Box>
 
-            {upcoming.length === 0 ? (
-              <Box sx={{ py: 4, textAlign: 'center' }}>
-                <Typography color="text.secondary">Nenhuma estada futura. Que tal planejar uma viagem?</Typography>
-              </Box>
-            ) : (
-              <Grid container spacing={2}>
-                {upcoming.slice(0, 3).map((res) => (
-                  <Grid key={res.id} size={{ xs: 12, sm: 6, md: 4 }}>
-                    <Card sx={{ borderRadius: '16px', border: '1px solid', borderColor: 'divider', boxShadow: 'none', height: '100%' }}>
-                      {getCapaUrl(res.estabelecimento) && (
-                        <CardMedia component="img" height="120" image={getCapaUrl(res.estabelecimento)} alt={res.estabelecimento?.nome} />
-                      )}
-                      <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
-                        <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>
-                          {res.estabelecimento?.nome || 'Estabelecimento'}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.25, mb: 1 }}>
-                          <Place sx={{ fontSize: 14 }} />
-                          {res.estabelecimento?.cidade?.nome}, {res.estabelecimento?.cidade?.estado}
-                        </Typography>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                          <Typography variant="caption" color="text.secondary">
-                            {dayjs(res.checkIn).format('DD/MM')} - {dayjs(res.checkOut).format('DD/MM')}
-                          </Typography>
-                          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                          <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', flexGrow: 1, minWidth: 0 }}>
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, mb: 0.5 }}>
+                              <Typography variant="subtitle1" sx={{ fontWeight: 700, lineHeight: 1.3 }}>
+                                {res.estabelecimento?.nome || 'Estabelecimento'}
+                              </Typography>
+                              <StatusChip status={res.status} />
+                            </Box>
+
+                            <Typography
+                              variant="body2"
+                              color="textSecondary"
+                              sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1 }}
+                            >
+                              <Place aria-hidden sx={{ fontSize: 16 }} />
+                              {res.quarto?.nome || 'Quarto'} ·{' '}
+                              {res.estabelecimento?.cidade?.nome}, {res.estabelecimento?.cidade?.estado}
+                            </Typography>
+
+                            <Typography variant="body2" color="textSecondary">
+                              {formatDate(res.checkIn)} a {formatDate(res.checkOut)} · {nights}{' '}
+                              {nights === 1 ? 'noite' : 'noites'}
+                            </Typography>
+
+                            <Box
+                              sx={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: 1,
+                                mt: 'auto',
+                                pt: 1.5,
+                                flexWrap: 'wrap',
+                              }}
+                            >
+                              <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                                {formatCurrency(res.valorTotal)}
+                              </Typography>
+                              <Button
+                                size="small"
+                                endIcon={<ArrowForward />}
+                                onClick={() => navigate('/hospede/reservas')}
+                              >
+                                Ver detalhes
+                              </Button>
+                            </Box>
+                          </Box>
+                        </Box>
+                      );
+                    })}
+                  </Box>
+                )}
+              </SectionCard>
+            </Grid>
+
+            {/* Favoritos recentes */}
+            <Grid size={{ xs: 12, md: 5 }}>
+              <SectionCard
+                title="Favoritos recentes"
+                subtitle="Acesso rápido aos lugares que você salvou."
+                action={
+                  favorites.length > 0 ? (
+                    <Button
+                      size="small"
+                      endIcon={<ArrowForward />}
+                      onClick={() => navigate('/hospede/favoritos')}
+                    >
+                      Ver todos
+                    </Button>
+                  ) : undefined
+                }
+                sx={{ height: '100%' }}
+              >
+                {favorites.length === 0 ? (
+                  <EmptyState
+                    compact
+                    icon={<Favorite />}
+                    title="Nenhum favorito ainda"
+                    description="Salve estabelecimentos para encontrá-los rapidamente na hora de reservar."
+                    action={
+                      <Button variant="contained" startIcon={<Search />} onClick={() => navigate('/busca')}>
+                        Explorar hospedagens
+                      </Button>
+                    }
+                  />
+                ) : (
+                  <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                    {favorites.slice(0, 4).map((fav, index) => {
+                      const nota = Number(fav.estabelecimento?.notaMedia) || 0;
+
+                      return (
+                        <Box key={fav.id}>
+                          <Box
+                            component="button"
+                            type="button"
+                            onClick={() => navigate(`/hospedagem/${fav.estabelecimento.id}`)}
+                            sx={{
+                              width: '100%',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 1.5,
+                              py: 1.5,
+                              px: 1,
+                              border: 0,
+                              borderRadius: 2,
+                              bgcolor: 'transparent',
+                              color: 'inherit',
+                              textAlign: 'left',
+                              cursor: 'pointer',
+                              font: 'inherit',
+                              transition: 'background-color 180ms',
+                              '&:hover': { bgcolor: 'action.hover' },
+                            }}
+                          >
+                            <Avatar variant="rounded" sx={{ width: 40, height: 40 }}>
+                              <Hotel fontSize="small" />
+                            </Avatar>
+                            <Box sx={{ flex: 1, minWidth: 0 }}>
+                              <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>
+                                {fav.estabelecimento.nome}
+                              </Typography>
+                              <Typography variant="caption" color="textSecondary" noWrap>
+                                {fav.estabelecimento.cidade?.nome},{' '}
+                                {fav.estabelecimento.cidade?.estado}
+                              </Typography>
+                            </Box>
+                            {nota > 0 && (
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25, flexShrink: 0 }}>
+                                <Star aria-hidden sx={{ fontSize: 16, color: 'warning.main' }} />
+                                <Typography variant="caption" sx={{ fontWeight: 700 }}>
+                                  {nota.toFixed(1)}
+                                </Typography>
+                              </Box>
+                            )}
+                          </Box>
+                          {index < Math.min(favorites.length, 4) - 1 && <Divider />}
+                        </Box>
+                      );
+                    })}
+                  </Box>
+                )}
+              </SectionCard>
+            </Grid>
+
+            {/* Reservas recentes */}
+            <Grid size={{ xs: 12 }}>
+              <SectionCard
+                title="Reservas recentes"
+                subtitle="Últimas solicitações registradas na sua conta."
+                action={
+                  recent.length > 0 ? (
+                    <Button
+                      size="small"
+                      endIcon={<ArrowForward />}
+                      onClick={() => navigate('/hospede/reservas')}
+                    >
+                      Ver todas
+                    </Button>
+                  ) : undefined
+                }
+              >
+                {recent.length === 0 ? (
+                  <EmptyState
+                    compact
+                    icon={<CalendarMonth />}
+                    title="Você ainda não possui reservas"
+                    description="Quando você solicitar uma hospedagem, ela aparecerá aqui."
+                    action={
+                      <Button variant="contained" startIcon={<Search />} onClick={() => navigate('/busca')}>
+                        Buscar hospedagens
+                      </Button>
+                    }
+                  />
+                ) : (
+                  <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                    {recent.map((res, index) => (
+                      <Box key={res.id}>
+                        <Box
+                          sx={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 2,
+                            py: 1.5,
+                            flexWrap: { xs: 'wrap', sm: 'nowrap' },
+                          }}
+                        >
+                          <Avatar
+                            src={getCapaUrl(res.estabelecimento) || undefined}
+                            variant="rounded"
+                            sx={{ width: 44, height: 44, flexShrink: 0 }}
+                          >
+                            <Hotel fontSize="small" />
+                          </Avatar>
+                          <Box sx={{ flex: 1, minWidth: 160 }}>
+                            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                              {res.estabelecimento?.nome || 'Estabelecimento'}
+                            </Typography>
+                            <Typography variant="caption" color="textSecondary">
+                              {res.quarto?.nome || 'Quarto'} · {formatDate(res.checkIn, { day: '2-digit', month: '2-digit' })} a{' '}
+                              {formatDate(res.checkOut, { day: '2-digit', month: '2-digit' })}
+                            </Typography>
+                          </Box>
+                          <Typography variant="body2" sx={{ fontWeight: 600, flexShrink: 0 }}>
                             {formatCurrency(res.valorTotal)}
                           </Typography>
+                          <StatusChip status={res.status} />
                         </Box>
-                        <Chip
-                          label={statusChipConfig[res.status]?.label || res.status}
-                          size="small"
-                          color={statusChipConfig[res.status]?.color || 'default'}
-                          sx={{ borderRadius: '6px', fontWeight: 600, fontSize: '0.7rem' }}
-                        />
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                ))}
-              </Grid>
-            )}
-          </Paper>
-        </Grid>
-
-        {/* Quick Actions */}
-        <Grid size={{ xs: 12 }}>
-          <Paper sx={{ p: 3, borderRadius: '20px', border: '1px solid', borderColor: 'divider' }}>
-            <Typography variant="h6" sx={{ fontFamily: '"Outfit", sans-serif', fontWeight: 700, mb: 3 }}>
-              Acesso Rápido
-            </Typography>
-            <Grid container spacing={2}>
-              {[
-                { label: 'Buscar Hospedagens', icon: <Search />, path: '/busca', color: '#0097A7' },
-                { label: 'Minhas Reservas', icon: <CalendarMonth />, path: '/hospede/reservas', color: '#FF7043' },
-                { label: 'Favoritos', icon: <Favorite />, path: '/hospede/favoritos', color: '#F59E0B' },
-                { label: 'Meu Perfil', icon: <Person />, path: '/hospede/perfil', color: '#10B981' },
-              ].map((item) => (
-                <Grid key={item.path} size={{ xs: 6, sm: 3 }}>
-                  <Button
-                    variant="outlined"
-                    fullWidth
-                    startIcon={item.icon}
-                    onClick={() => navigate(item.path)}
-                    sx={{
-                      p: 2,
-                      borderRadius: '12px',
-                      textTransform: 'none',
-                      fontWeight: 600,
-                      borderColor: 'divider',
-                      color: 'text.primary',
-                      justifyContent: 'flex-start',
-                      '&:hover': { borderColor: item.color, bgcolor: `${item.color}08` },
-                    }}
-                  >
-                    {item.label}
-                  </Button>
-                </Grid>
-              ))}
+                        {index < recent.length - 1 && <Divider />}
+                      </Box>
+                    ))}
+                  </Box>
+                )}
+              </SectionCard>
             </Grid>
-          </Paper>
-        </Grid>
 
-        {/* Favorites */}
-        {favorites.length > 0 && (
-          <Grid size={{ xs: 12 }}>
-            <Paper sx={{ p: 3, borderRadius: '20px', border: '1px solid', borderColor: 'divider' }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-                <Typography variant="h6" sx={{ fontFamily: '"Outfit", sans-serif', fontWeight: 700 }}>
-                  Meus Favoritos
-                </Typography>
-                <Button
-                  size="small"
-                  endIcon={<ArrowForward />}
-                  onClick={() => navigate('/hospede/favoritos')}
-                  sx={{ textTransform: 'none', fontWeight: 600, borderRadius: '8px' }}
-                >
-                  Ver todos
-                </Button>
-              </Box>
-
-              <Grid container spacing={2}>
-                {favorites.slice(0, 4).map((fav) => (
-                  <Grid key={fav.id} size={{ xs: 6, sm: 3 }}>
-                    <Paper
-                      sx={{
-                        p: 2,
-                        borderRadius: '12px',
-                        border: '1px solid',
-                        borderColor: 'divider',
-                        cursor: 'pointer',
-                        height: '100%',
-                        '&:hover': { borderColor: 'primary.main', bgcolor: 'rgba(0,151,167,0.04)' },
-                      }}
-                      onClick={() => navigate(`/hospedagem/${fav.estabelecimento.id}`)}
-                    >
-                      <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
-                        {fav.estabelecimento.nome}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
-                        <Place sx={{ fontSize: 12 }} />
-                        {fav.estabelecimento.cidade.nome}, {fav.estabelecimento.cidade.estado}
-                      </Typography>
-                      {fav.estabelecimento.notaMedia && Number(fav.estabelecimento.notaMedia) > 0 && (
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25, mt: 0.5 }}>
-                          <Star sx={{ fontSize: 14, color: '#F59E0B' }} />
-                          <Typography variant="caption" sx={{ fontWeight: 600 }}>
-                            {Number(fav.estabelecimento.notaMedia).toFixed(1)}
-                          </Typography>
-                        </Box>
-                      )}
-                    </Paper>
-                  </Grid>
-                ))}
-              </Grid>
-            </Paper>
+            {/* Acesso rápido */}
+            <Grid size={{ xs: 12 }}>
+              <SectionCard title="Acesso rápido" headerDivider={false}>
+                <Grid container spacing={2}>
+                  {[
+                    { label: 'Buscar hospedagens', icon: <Search />, path: '/busca' },
+                    { label: 'Minhas reservas', icon: <CalendarMonth />, path: '/hospede/reservas' },
+                    { label: 'Favoritos', icon: <Favorite />, path: '/hospede/favoritos' },
+                    { label: 'Meu perfil', icon: <Person />, path: '/hospede/perfil' },
+                  ].map((item) => (
+                    <Grid key={item.path} size={{ xs: 12, sm: 6, md: 3 }}>
+                      <Button
+                        variant="outlined"
+                        fullWidth
+                        startIcon={item.icon}
+                        onClick={() => navigate(item.path)}
+                        sx={{ justifyContent: 'flex-start', py: 1.75 }}
+                      >
+                        {item.label}
+                      </Button>
+                    </Grid>
+                  ))}
+                </Grid>
+              </SectionCard>
+            </Grid>
           </Grid>
-        )}
-      </Grid>
-    </Box>
+        </>
+      )}
+    </PageContainer>
   );
 }

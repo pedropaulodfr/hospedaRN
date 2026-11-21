@@ -1,42 +1,73 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Box, Container, Typography, Button, Grid, Card, CardContent,
-  CardMedia, TextField, InputAdornment, Chip, Avatar, Rating,
-  Skeleton, useTheme, alpha, IconButton, Autocomplete,
+  Box,
+  Typography,
+  Button,
+  Grid,
+  Card,
+  CardContent,
+  CardMedia,
+  TextField,
+  InputAdornment,
+  Chip,
+  Rating,
+  Skeleton,
+  Autocomplete,
+  alpha,
 } from '@mui/material';
 import {
-  Search, LocationOn, TravelExplore, BeachAccess, Star,
-  ArrowForward, WifiTethering, Pool, LocalParking, FreeBreakfast,
-  Favorite, Place, Event,
+  Search,
+  Place,
+  ArrowForward,
+  Home,
+  Event as EventIcon,
 } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
 import { citiesApi, establishmentsApi, eventsApi } from '../../services/api';
 import { useUIStore } from '../../stores/uiStore';
+import { MediaFallback, PageContainer, SectionHeading } from '../../components/common';
+import { FavoriteButton } from '../../components/favorites/FavoriteButton';
+import {
+  EventDetailsDialog,
+  eventCover,
+  eventDateParts,
+  type EventData,
+} from '../../components/events/EventDetailsDialog';
+import { formatCurrency } from '../../theme/tokens';
 
+/**
+ * Fotos do carrossel do hero.
+ *
+ * A terceira imagem é o cartão-postal real do RN: dunas e lagoa de Genipabu
+ * (Extremoz/RN), foto em domínio público (CC0) do Wikimedia Commons — sem
+ * obrigação de atribuição e sem marca d'água. As duas primeiras são praias
+ * usadas só como atmosfera.
+ */
 const heroImages = [
   'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=1600&q=80',
   'https://images.unsplash.com/photo-1519046904884-53103b34b206?w=1600&q=80',
-  'https://images.unsplash.com/photo-1449824913935-59a10b8d2000?w=1600&q=80',
+  'https://upload.wikimedia.org/wikipedia/commons/thumb/5/55/Dunas_de_Genipabu_-_RN.jpg/1920px-Dunas_de_Genipabu_-_RN.jpg',
 ];
 
-import React from 'react';
+/** Menor diária entre os quartos ativos do estabelecimento (dado real da API). */
+function minRoomPrice(est: any): number | null {
+  const precos = (est?.quartos ?? [])
+    .map((quarto: any) => Number(quarto.precoBase))
+    .filter((valor: number) => Number.isFinite(valor) && valor > 0);
+  return precos.length > 0 ? Math.min(...precos) : null;
+}
 
-const amenityIcons: Record<string, React.ReactNode> = {
-  'Wi-Fi': <WifiTethering />,
-  'Piscina': <Pool />,
-  'Estacionamento': <LocalParking />,
-  'Café da manhã': <FreeBreakfast />,
-};
-
+/** Data do evento em blocos curtos (dia + mês) para o card da agenda. */
 export default function HomePage() {
   const [heroIndex, setHeroIndex] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
+  // Evento aberto no dialog de detalhes (mesmo componente usado em /eventos).
+  const [detailEvent, setDetailEvent] = useState<EventData | null>(null);
   const navigate = useNavigate();
   const { setSearchFilters } = useUIStore();
-  const theme = useTheme();
 
-  // Rotate hero images
+  // Rotaciona as imagens do hero.
   useEffect(() => {
     const interval = setInterval(() => {
       setHeroIndex((prev) => (prev + 1) % heroImages.length);
@@ -50,10 +81,10 @@ export default function HomePage() {
     select: (res) => res.data.data,
   });
 
-  const { data: establishmentsData, isLoading: loadingEst } = useQuery({
+  const { data: establishmentsPayload, isLoading: loadingEst } = useQuery({
     queryKey: ['establishments-featured'],
     queryFn: () => establishmentsApi.getAll({ limit: 6 }),
-    select: (res) => res.data.data?.data,
+    select: (res) => res.data.data,
   });
 
   const { data: eventsData } = useQuery({
@@ -61,6 +92,8 @@ export default function HomePage() {
     queryFn: () => eventsApi.getAll(true),
     select: (res) => res.data.data,
   });
+
+  const establishmentsData = establishmentsPayload?.data;
 
   const handleSearch = () => {
     if (searchQuery) {
@@ -83,107 +116,130 @@ export default function HomePage() {
 
   return (
     <Box>
-      {/* ===== HERO SECTION ===== */}
+      {/* ===== HERO ===== */}
       <Box
+        component="section"
+        aria-label="Destaque da página inicial"
         sx={{
-          position: 'relative', minHeight: '92vh',
-          display: 'flex', alignItems: 'center',
+          position: 'relative',
+          display: 'flex',
+          alignItems: 'center',
           overflow: 'hidden',
+          minHeight: { xs: 'auto', md: 'clamp(580px, 78vh, 720px)' },
+          py: { xs: 7, md: 8 },
         }}
       >
-        {/* Background image with transition */}
         {heroImages.map((img, index) => (
           <Box
             key={img}
+            aria-hidden
             sx={{
-              position: 'absolute', inset: 0,
+              position: 'absolute',
+              inset: 0,
               backgroundImage: `url(${img})`,
-              backgroundSize: 'cover', backgroundPosition: 'center',
-              transition: 'opacity 1.5s ease',
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              transition: 'opacity 1.2s ease',
               opacity: heroIndex === index ? 1 : 0,
             }}
           />
         ))}
 
-        {/* Gradient overlay */}
+        {/* Overlay: mais escuro à esquerda, onde fica o texto, e mais leve à
+            direita para a paisagem aparecer — garante contraste sobre areia clara. */}
         <Box
+          aria-hidden
           sx={{
-            position: 'absolute', inset: 0,
-            background: 'linear-gradient(135deg, rgba(0,20,40,0.85) 0%, rgba(0,151,167,0.4) 50%, rgba(255,112,67,0.3) 100%)',
+            position: 'absolute',
+            inset: 0,
+            background:
+              'linear-gradient(100deg, rgba(0,0,0,0.66) 0%, rgba(0,0,0,0.46) 42%, rgba(0,0,0,0.24) 100%)',
           }}
         />
 
-        {/* Animated particles */}
-        <Box sx={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none' }}>
-          {[...Array(6)].map((_, i) => (
+        <PageContainer
+          maxWidth="content"
+          gutterTop={false}
+          sx={{ position: 'relative', zIndex: 2, pt: 0, pb: 0 }}
+        >
+          <Box sx={{ maxWidth: 880 }}>
             <Box
-              key={i}
               sx={{
-                position: 'absolute',
-                width: `${Math.random() * 300 + 100}px`,
-                height: `${Math.random() * 300 + 100}px`,
-                borderRadius: '50%',
-                background: `radial-gradient(circle, rgba(0,188,212,0.1), transparent)`,
-                left: `${Math.random() * 100}%`,
-                top: `${Math.random() * 100}%`,
-                animation: `float ${5 + i}s ease-in-out infinite alternate`,
-                '@keyframes float': {
-                  '0%': { transform: 'translateY(0px)' },
-                  '100%': { transform: 'translateY(-30px)' },
-                },
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 1,
+                px: 1.5,
+                py: 0.5,
+                mb: 2,
+                borderRadius: 999,
+                bgcolor: (t) => alpha(t.palette.common.white, 0.12),
+                border: (t) => `1px solid ${alpha(t.palette.common.white, 0.22)}`,
+                backdropFilter: 'blur(6px)',
               }}
-            />
-          ))}
-        </Box>
+            >
+              <Box
+                aria-hidden
+                sx={(t) => ({
+                  width: 6,
+                  height: 6,
+                  borderRadius: '50%',
+                  bgcolor: t.palette.secondary.light,
+                })}
+              />
+              <Typography
+                variant="caption"
+                component="p"
+                sx={{ color: 'rgba(255,255,255,0.92)', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase' }}
+              >
+                Descubra o Rio Grande do Norte
+              </Typography>
+            </Box>
 
-        <Container maxWidth="lg" sx={{ position: 'relative', zIndex: 2, py: 8 }}>
-          <Box sx={{ maxWidth: 780 }}>
-            {/* Tagline */}
-            <Chip
-              icon={<BeachAccess sx={{ color: '#FF7043 !important' }} />}
-              label="Descubra o Rio Grande do Norte"
-              sx={{
-                bgcolor: 'rgba(255,255,255,0.15)', color: 'white',
-                backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.25)',
-                fontWeight: 600, mb: 3, fontSize: '0.875rem',
-              }}
-            />
-
-            {/* Headline */}
             <Typography
               variant="h1"
               sx={{
-                color: 'white', fontFamily: '"Outfit", sans-serif',
-                fontWeight: 900, fontSize: { xs: '2.5rem', md: '4rem', lg: '5rem' },
-                lineHeight: 1.1, mb: 2,
-                textShadow: '0 2px 30px rgba(0,0,0,0.4)',
+                color: 'common.white',
+                fontSize: { xs: '2.125rem', md: '2.875rem', lg: '3.25rem' },
+                mb: 2.5,
+                textShadow: '0 2px 24px rgba(0,0,0,0.35)',
               }}
             >
-              Sua próxima
-              <Box component="span" sx={{ color: '#00BCD4', display: 'block' }}>
-                aventura no RN
-              </Box>
-              começa aqui
+              Sua próxima aventura no Rio Grande do Norte começa aqui
             </Typography>
 
             <Typography
               variant="h5"
               sx={{
-                color: 'rgba(255,255,255,0.85)', mb: 5,
-                fontWeight: 400, maxWidth: 560, lineHeight: 1.6,
-                fontSize: { xs: '1rem', md: '1.25rem' },
+                color: 'rgba(255,255,255,0.86)',
+                mb: 4,
+                fontWeight: 400,
+                maxWidth: 560,
+                fontSize: { xs: '1rem', md: '1.125rem' },
               }}
             >
               Encontre pousadas, hotéis e chalés nas cidades mais bonitas do Rio Grande do Norte.
             </Typography>
 
-            {/* Search Box */}
+            <Typography
+              variant="subtitle2"
+              component="p"
+              sx={{ color: 'rgba(255,255,255,0.86)', mb: 1.5 }}
+            >
+              Onde você quer ficar?
+            </Typography>
+
+            {/* Card de busca */}
             <Box
               sx={{
-                display: 'flex', gap: 0, alignItems: 'center',
-                bgcolor: 'white', borderRadius: 3, p: 1,
-                boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
-                maxWidth: 680,
+                display: 'flex',
+                flexDirection: { xs: 'column', sm: 'row' },
+                alignItems: { xs: 'stretch', sm: 'center' },
+                gap: 1,
+                maxWidth: 720,
+                bgcolor: 'background.paper',
+                borderRadius: '16px',
+                p: 1,
+                boxShadow: (t) => `0 18px 44px ${alpha(t.palette.common.black, 0.22)}`,
               }}
             >
               <Autocomplete
@@ -201,7 +257,7 @@ export default function HomePage() {
                 }}
                 onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                 renderInput={(params) => {
-                  const { InputProps, ...restParams } = params as any;
+                  const { ...restParams } = params as any;
                   return (
                     <TextField
                       {...restParams}
@@ -209,6 +265,10 @@ export default function HomePage() {
                       variant="standard"
                       slotProps={{
                         ...params.slotProps,
+                        htmlInput: {
+                          ...params.slotProps?.htmlInput,
+                          'aria-label': 'Buscar cidade ou hospedagem',
+                        },
                         input: {
                           ...params.slotProps?.input,
                           disableUnderline: true,
@@ -223,296 +283,479 @@ export default function HomePage() {
                     />
                   );
                 }}
-                sx={{ flex: 1 }}
+                sx={{ flex: 1, minWidth: 0 }}
               />
               <Button
                 variant="contained"
                 size="large"
                 onClick={handleSearch}
-                sx={{
-                  borderRadius: 2.5, px: 4, py: 1.5, ml: 1, minWidth: 140,
-                  background: 'linear-gradient(135deg, #0097A7, #00BCD4)',
-                  flexShrink: 0,
-                }}
+                sx={{ flexShrink: 0, minWidth: { sm: 148 } }}
               >
                 Buscar
               </Button>
             </Box>
-
-            {/* Quick stats */}
-            <Box sx={{ display: 'flex', gap: 4, mt: 5 }}>
-              {[
-                { value: '200+', label: 'Hospedagens' },
-                { value: '30+', label: 'Cidades' },
-                { value: '4.8★', label: 'Avaliação média' },
-              ].map((stat) => (
-                <Box key={stat.label}>
-                  <Typography variant="h5" sx={{ fontWeight: 800, color: '#00BCD4' }}>
-                    {stat.value}
-                  </Typography>
-                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)' }}>
-                    {stat.label}
-                  </Typography>
-                </Box>
-              ))}
-            </Box>
           </Box>
-        </Container>
+        </PageContainer>
 
-        {/* Hero dots */}
-        <Box sx={{ position: 'absolute', bottom: 32, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 1 }}>
-          {heroImages.map((_, i) => (
+        {/* Indicadores do carrossel */}
+        <Box
+          sx={{
+            position: 'absolute',
+            bottom: { xs: 20, md: 32 },
+            left: '50%',
+            transform: 'translateX(-50%)',
+            display: 'flex',
+            gap: 1,
+            zIndex: 3,
+          }}
+        >
+          {heroImages.map((img, i) => (
             <Box
-              key={i}
+              key={img}
+              component="button"
+              type="button"
+              aria-label={`Exibir imagem ${i + 1}`}
+              aria-current={heroIndex === i ? 'true' : undefined}
               onClick={() => setHeroIndex(i)}
               sx={{
-                width: heroIndex === i ? 28 : 8, height: 8,
-                borderRadius: 4, bgcolor: heroIndex === i ? 'white' : 'rgba(255,255,255,0.4)',
-                cursor: 'pointer', transition: 'all 0.3s ease',
+                width: heroIndex === i ? 28 : 8,
+                height: 8,
+                p: 0,
+                border: 0,
+                borderRadius: '999px',
+                cursor: 'pointer',
+                bgcolor:
+                  heroIndex === i
+                    ? 'common.white'
+                    : (t) => alpha(t.palette.common.white, 0.45),
+                transition: 'width 180ms, background-color 180ms',
               }}
             />
           ))}
         </Box>
       </Box>
 
-      {/* ===== CITIES SECTION ===== */}
-      <Container maxWidth="xl" sx={{ py: 10 }}>
-        <Box sx={{ mb: 6 }}>
-          <Chip label="Destinos" color="primary" sx={{ mb: 1.5, fontWeight: 600 }} />
-          <Typography variant="h3" sx={{ fontWeight: 800, mb: 1 }}>
-            Explore as cidades do RN
-          </Typography>
-          <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 500 }}>
-            Explore cidades repletas de história, cultura, gastronomia e belezas naturais.
-          </Typography>
-        </Box>
-
-        <Grid container spacing={3}>
-          {citiesData?.slice(0, 6).map((city: any) => (
-            <Grid size={{ xs: 12, sm: 6, md: 4 }} key={city.id}>
-              <Card
-                onClick={() => navigate(`/busca?cityId=${city.id}`)}
-                sx={{
-                  cursor: 'pointer', borderRadius: 3, overflow: 'hidden',
-                  position: 'relative', height: 220,
-                  '&:hover .overlay': { opacity: 0.7 },
-                  '&:hover .city-name': { bottom: 20 },
-                }}
-              >
-                <CardMedia
-                  component="img"
-                  image={city.fotoPerfil ? `https://hospedarn-bucket.s3.us-east-2.amazonaws.com/cidades/${city.fotoPerfil}` : `https://placehold.co/400x220/0097A7/FFFFFF?text=${encodeURIComponent(city.nome)}`}
-                  alt={city.nome}
-                  sx={{ height: '100%', objectFit: 'cover' }}
-                />
-                <Box
-                  className="overlay"
-                  sx={{
-                    position: 'absolute', inset: 0,
-                    background: 'linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.2) 60%, transparent 100%)',
-                    transition: 'opacity 0.3s',
-                  }}
-                />
-                <Box
-                  className="city-name"
-                  sx={{
-                    position: 'absolute', bottom: 16, left: 16, right: 16,
-                    transition: 'bottom 0.3s ease',
-                  }}
-                >
-                  <Typography variant="h5" sx={{ fontWeight: 700, color: 'white' }}>
-                    {city.nome}
-                  </Typography>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                    <Place sx={{ color: 'rgba(255,255,255,0.7)', fontSize: 14 }} />
-                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)' }}>
-                      {city._count?.estabelecimentos || 0} hospedagens
-                    </Typography>
-                  </Box>
-                </Box>
-              </Card>
-            </Grid>
-          )) || [...Array(6)].map((_, i) => (
-            <Grid size={{ xs: 12, sm: 6, md: 4 }} key={i}>
-              <Skeleton variant="rectangular" height={220} sx={{ borderRadius: 3 }} />
-            </Grid>
-          ))}
-        </Grid>
-      </Container>
-
-      {/* ===== FEATURED ESTABLISHMENTS ===== */}
-      <Box sx={{ bgcolor: 'rgba(0,151,167,0.03)', py: 10 }}>
-        <Container maxWidth="xl">
-          <Box sx={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', mb: 6 }}>
-            <Box>
-              <Chip label="Destaques" sx={{ bgcolor: '#FF7043', color: 'white', mb: 1.5, fontWeight: 600 }} />
-              <Typography variant="h3" sx={{ fontWeight: 800 }}>Hospedagens em destaque</Typography>
-            </Box>
+      {/* ===== DESTINOS ===== */}
+      <PageContainer maxWidth="content" sx={{ py: { xs: 6, md: 8 } }}>
+        <SectionHeading
+          overline="Destinos"
+          title="Explore as cidades do RN"
+          subtitle="Cidades com história, cultura, gastronomia e belezas naturais para a sua próxima viagem."
+          action={
             <Button
               onClick={() => navigate('/busca')}
               endIcon={<ArrowForward />}
-              sx={{ display: { xs: 'none', md: 'flex' } }}
+              sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
             >
-              Ver todas
+              Ver todas as hospedagens
             </Button>
-          </Box>
+          }
+        />
+
+        <Grid container spacing={3}>
+          {!citiesData
+            ? [...Array(6)].map((_, i) => (
+                <Grid size={{ xs: 12, sm: 6, md: 4 }} key={i}>
+                  <Skeleton variant="rounded" height={220} />
+                </Grid>
+              ))
+            : citiesData.slice(0, 6).map((city: any) => (
+                <Grid size={{ xs: 12, sm: 6, md: 4 }} key={city.id}>
+                  <Card
+                    role="link"
+                    tabIndex={0}
+                    aria-label={`Ver hospedagens em ${city.nome}`}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        navigate(`/busca?cityId=${city.id}`);
+                      }
+                    }}
+                    onClick={() => navigate(`/busca?cityId=${city.id}`)}
+                    sx={{
+                      position: 'relative',
+                      height: 220,
+                      overflow: 'hidden',
+                      cursor: 'pointer',
+                      transition: 'border-color 180ms, transform 180ms',
+                      '&:hover': { borderColor: 'primary.main', transform: 'translateY(-2px)' },
+                    }}
+                  >
+                    {city.fotoPerfil ? (
+                      <CardMedia
+                        component="img"
+                        image={`https://hospedarn-bucket.s3.us-east-2.amazonaws.com/cidades/${city.fotoPerfil}`}
+                        alt={city.nome}
+                        sx={{ height: '100%', objectFit: 'cover' }}
+                      />
+                    ) : (
+                      <MediaFallback variant="city" />
+                    )}
+                    <Box
+                      aria-hidden
+                      sx={{
+                        position: 'absolute',
+                        inset: 0,
+                        background: (t) =>
+                          `linear-gradient(to top, ${alpha(t.palette.common.black, 0.72)} 0%, ${alpha(t.palette.common.black, 0.18)} 55%, transparent 100%)`,
+                      }}
+                    />
+                    <Box sx={{ position: 'absolute', bottom: 16, left: 16, right: 16 }}>
+                      <Typography variant="h5" component="h3" sx={{ color: 'common.white' }}>
+                        {city.nome}
+                      </Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.25 }}>
+                        <Place aria-hidden sx={{ fontSize: 14, color: 'rgba(255,255,255,0.8)' }} />
+                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.82)' }}>
+                          {city._count?.estabelecimentos || 0}{' '}
+                          {city._count?.estabelecimentos === 1 ? 'hospedagem' : 'hospedagens'}
+                        </Typography>
+                      </Box>
+                    </Box>
+                  </Card>
+                </Grid>
+              ))}
+        </Grid>
+      </PageContainer>
+
+      {/* ===== HOSPEDAGENS EM DESTAQUE ===== */}
+      <Box
+        sx={{
+          py: { xs: 6, md: 8 },
+          bgcolor: (t) => alpha(t.palette.primary.main, 0.03),
+          borderTop: '1px solid',
+          borderBottom: '1px solid',
+          borderColor: 'divider',
+        }}
+      >
+        <PageContainer maxWidth="content" gutterTop={false} sx={{ pb: 0 }}>
+          <SectionHeading
+            overline="Destaques"
+            title="Hospedagens em destaque"
+            subtitle="Opções bem avaliadas para diferentes estilos de viagem pelo estado."
+            action={
+              <Button onClick={() => navigate('/busca')} endIcon={<ArrowForward />}>
+                Ver todas
+              </Button>
+            }
+          />
 
           <Grid container spacing={3}>
             {loadingEst
               ? [...Array(6)].map((_, i) => (
-                <Grid size={{ xs: 12, sm: 6, md: 4 }} key={i}>
-                  <Skeleton variant="rectangular" height={340} sx={{ borderRadius: 3 }} />
-                </Grid>
-              ))
-              : establishmentsData?.map((est: any) => (
-                <Grid size={{ xs: 12, sm: 6, md: 4 }} key={est.id}>
-                  <Card
-                    onClick={() => navigate(`/hospedagem/${est.id}`)}
-                    sx={{ cursor: 'pointer', height: '100%', display: 'flex', flexDirection: 'column' }}
-                  >
-                    {/* Image */}
-                    <Box sx={{ position: 'relative', height: 200 }}>
-                      <CardMedia
-                        component="img"
-                        image={est.fotos?.find((p: any) => p.isCapa)?.url || est.fotos?.[0]?.url || 'https://placehold.co/400x200/0097A7/FFFFFF?text=HospedaRN'}
-                        alt={est.nome}
-                        sx={{ height: '100%', objectFit: 'cover' }}
-                      />
-                      <IconButton
-                        sx={{
-                          position: 'absolute', top: 8, right: 8,
-                          bgcolor: 'rgba(255,255,255,0.9)',
-                          '&:hover': { bgcolor: 'white' },
+                  <Grid size={{ xs: 12, sm: 6, md: 4 }} key={i}>
+                    <Skeleton variant="rounded" height={380} />
+                  </Grid>
+                ))
+              : (establishmentsData ?? []).map((est: any) => {
+                  const coverPhoto =
+                    est.fotos?.find((p: any) => p.isCapa)?.url || est.fotos?.[0]?.url;
+                  const price = minRoomPrice(est);
+
+                  return (
+                    <Grid size={{ xs: 12, sm: 6, md: 4 }} key={est.id}>
+                      <Card
+                        role="link"
+                        tabIndex={0}
+                        aria-label={`Ver detalhes de ${est.nome}`}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            navigate(`/hospedagem/${est.id}`);
+                          }
                         }}
-                        size="small"
+                        onClick={() => navigate(`/hospedagem/${est.id}`)}
+                        sx={{
+                          height: '100%',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          overflow: 'hidden',
+                          cursor: 'pointer',
+                          transition: 'border-color 180ms, box-shadow 180ms, transform 180ms',
+                          '&:hover': {
+                            borderColor: 'primary.main',
+                            transform: 'translateY(-2px)',
+                            boxShadow: (t) => `0 8px 24px ${alpha(t.palette.text.primary, 0.08)}`,
+                          },
+                        }}
                       >
-                        <Favorite sx={{ fontSize: 18, color: 'text.secondary' }} />
-                      </IconButton>
-                      <Chip
-                        label={est.cidade?.nome}
-                        icon={<LocationOn sx={{ fontSize: '12px !important' }} />}
-                        size="small"
-                        sx={{
-                          position: 'absolute', bottom: 8, left: 8,
-                          bgcolor: 'rgba(0,0,0,0.7)', color: 'white',
-                          '& .MuiChip-icon': { color: '#00BCD4' },
-                        }}
-                      />
-                    </Box>
+                        <Box sx={{ position: 'relative', height: 200, flexShrink: 0 }}>
+                          {coverPhoto ? (
+                            <CardMedia
+                              component="img"
+                              image={coverPhoto}
+                              alt={est.nome}
+                              sx={{ height: '100%', objectFit: 'cover' }}
+                            />
+                          ) : (
+                            <MediaFallback variant="establishment" label={est.nome} />
+                          )}
+                          <FavoriteButton estabelecimentoId={est.id} nome={est.nome} />
+                          {est.cidade?.nome && (
+                            <Chip
+                              label={est.cidade.nome}
+                              icon={<Place sx={{ fontSize: 14 }} />}
+                              size="small"
+                              sx={{
+                                position: 'absolute',
+                                bottom: 12,
+                                left: 12,
+                                bgcolor: (t) => alpha(t.palette.common.black, 0.66),
+                                color: 'common.white',
+                                '& .MuiChip-icon': { color: 'common.white' },
+                              }}
+                            />
+                          )}
+                        </Box>
 
-                    <CardContent sx={{ flex: 1, p: 2.5 }}>
-                      <Typography variant="h6" gutterBottom noWrap sx={{ fontWeight: 700 }}>
-                        {est.nome}
-                      </Typography>
+                        <CardContent
+                          sx={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 1 }}
+                        >
+                          <Typography variant="h6" component="h3" noWrap>
+                            {est.nome}
+                          </Typography>
 
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1.5 }}>
-                        <Rating value={Number(est.notaMedia)} precision={0.5} size="small" readOnly />
-                        <Typography variant="caption" color="text.secondary">
-                          ({est.totalAvaliacoes})
-                        </Typography>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                            <Rating
+                              value={Number(est.notaMedia) || 0}
+                              precision={0.5}
+                              size="small"
+                              readOnly
+                            />
+                            <Typography variant="caption" color="textSecondary">
+                              {est.totalAvaliacoes
+                                ? `${Number(est.notaMedia).toFixed(1)} (${est.totalAvaliacoes})`
+                                : 'Sem avaliações'}
+                            </Typography>
+                          </Box>
+
+                          {est.descricao && (
+                            <Typography
+                              variant="body2"
+                              color="textSecondary"
+                              sx={{
+                                display: '-webkit-box',
+                                WebkitLineClamp: 2,
+                                WebkitBoxOrient: 'vertical',
+                                overflow: 'hidden',
+                              }}
+                            >
+                              {est.descricao}
+                            </Typography>
+                          )}
+
+                          <Box
+                            sx={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'flex-end',
+                              gap: 1,
+                              mt: 'auto',
+                              pt: 1.5,
+                              borderTop: '1px solid',
+                              borderColor: 'divider',
+                            }}
+                          >
+                            <Box>
+                              <Typography
+                                variant="caption"
+                                color="textSecondary"
+                                sx={{ display: 'block' }}
+                              >
+                                A partir de
+                              </Typography>
+                              {price !== null ? (
+                                <Typography variant="h6" color="primary">
+                                  {formatCurrency(price)}
+                                </Typography>
+                              ) : (
+                                <Typography variant="subtitle2" color="textSecondary">
+                                  Sob consulta
+                                </Typography>
+                              )}
+                            </Box>
+                            <Button variant="contained" size="small">
+                              Ver detalhes
+                            </Button>
+                          </Box>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                  );
+                })}
+          </Grid>
+        </PageContainer>
+      </Box>
+
+      {/* ===== EVENTOS PRÓXIMOS ===== */}
+      {eventsData && eventsData.length > 0 && (
+        <PageContainer maxWidth="content" sx={{ py: { xs: 6, md: 8 } }}>
+          <SectionHeading
+            overline="Agenda"
+            title="Eventos próximos"
+            subtitle="Confira o que acontece no estado e planeje a estadia em volta do evento."
+            action={
+              <Button onClick={() => navigate('/eventos')} endIcon={<ArrowForward />}>
+                Ver todos
+              </Button>
+            }
+          />
+
+          <Grid container spacing={3}>
+            {eventsData.slice(0, 3).map((event: any) => {
+              const { day, month } = eventDateParts(event.dataInicio);
+              const coverUrl = eventCover(event)?.url ?? null;
+
+              return (
+                <Grid size={{ xs: 12, md: 4 }} key={event.id}>
+                  <Card
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Ver detalhes e fotos do evento ${event.nome}`}
+                    onClick={() => setDetailEvent(event as EventData)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setDetailEvent(event as EventData);
+                      }
+                    }}
+                    sx={{
+                      height: '100%',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      overflow: 'hidden',
+                      cursor: 'pointer',
+                      transition: 'border-color 180ms, box-shadow 180ms',
+                      '&:hover': {
+                        borderColor: 'primary.main',
+                        boxShadow: (t) => `0 6px 20px ${t.palette.action.focus}`,
+                      },
+                    }}
+                  >
+                    {coverUrl && (
+                      <Box sx={{ position: 'relative', height: 150, flexShrink: 0 }}>
+                        <Box
+                          component="img"
+                          src={coverUrl}
+                          alt={`Foto de capa do evento ${event.nome}`}
+                          loading="lazy"
+                          sx={{
+                            display: 'block',
+                            width: '100%',
+                            height: '100%',
+                            objectFit: 'cover',
+                          }}
+                        />
+                        <Chip
+                          label={`${day} ${month}`}
+                          size="small"
+                          sx={{
+                            position: 'absolute',
+                            top: 10,
+                            left: 10,
+                            bgcolor: (t) => alpha(t.palette.common.black, 0.66),
+                            color: 'common.white',
+                            fontWeight: 700,
+                            letterSpacing: '0.04em',
+                          }}
+                        />
                       </Box>
+                    )}
 
-                      <Typography variant="body2" color="text.secondary" sx={{
-                        display: '-webkit-box', WebkitLineClamp: 2,
-                        WebkitBoxOrient: 'vertical', overflow: 'hidden', mb: 2,
-                      }}>
-                        {est.descricao || 'Uma ótima opção de hospedagem no coração do RN.'}
-                      </Typography>
-
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <Box>
-                          <Typography variant="caption" color="text.secondary">A partir de</Typography>
-                          <Typography variant="h6" color="primary.main" sx={{ fontWeight: 800 }}>
-                            R$ 150
+                    <CardContent sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
+                      {!coverUrl && (
+                        <Box
+                          aria-hidden
+                          sx={{
+                            width: 56,
+                            height: 64,
+                            flexShrink: 0,
+                            borderRadius: 3,
+                            bgcolor: (t) => alpha(t.palette.secondary.main, 0.1),
+                            color: 'secondary.main',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            lineHeight: 1,
+                          }}
+                        >
+                          <Typography variant="h5" component="span" sx={{ fontWeight: 800 }}>
+                            {day}
+                          </Typography>
+                          <Typography
+                            variant="caption"
+                            component="span"
+                            sx={{ fontWeight: 700, letterSpacing: '0.08em', mt: 0.25 }}
+                          >
+                            {month}
                           </Typography>
                         </Box>
-                        <Button variant="contained" size="small" sx={{ borderRadius: 2 }}>
-                          Ver detalhes
-                        </Button>
+                      )}
+
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography variant="h6" component="h3" sx={{ mb: 0.5 }}>
+                          {event.nome}
+                        </Typography>
+                        {event.descricao && (
+                          <Typography
+                            variant="body2"
+                            color="textSecondary"
+                            sx={{
+                              display: '-webkit-box',
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: 'vertical',
+                              overflow: 'hidden',
+                              mb: 1,
+                            }}
+                          >
+                            {event.descricao}
+                          </Typography>
+                        )}
+                        <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                          {event.eventosCidades?.slice(0, 2).map((ec: any) => (
+                            <Chip
+                              key={ec.cidade?.id}
+                              label={ec.cidade?.nome}
+                              size="small"
+                              variant="outlined"
+                            />
+                          ))}
+                        </Box>
                       </Box>
                     </CardContent>
                   </Card>
                 </Grid>
-              ))}
+              );
+            })}
           </Grid>
-        </Container>
-      </Box>
-
-      {/* ===== EVENTS SECTION ===== */}
-      {eventsData && eventsData.length > 0 && (
-        <Container maxWidth="xl" sx={{ py: 10 }}>
-          <Box sx={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', mb: 6 }}>
-            <Box>
-              <Chip label="Agenda" color="secondary" sx={{ mb: 1.5, fontWeight: 600 }} />
-              <Typography variant="h3" sx={{ fontWeight: 800 }}>Eventos próximos</Typography>
-            </Box>
-            <Button onClick={() => navigate('/eventos')} endIcon={<ArrowForward />}>
-              Ver todos
-            </Button>
-          </Box>
-
-          <Grid container spacing={3}>
-            {eventsData.slice(0, 3).map((event: any) => (
-              <Grid size={{ xs: 12, md: 4 }} key={event.id}>
-                <Card sx={{ borderRadius: 3, overflow: 'hidden' }}>
-                  <Box sx={{ height: 8, background: 'linear-gradient(90deg, #FF7043, #FF8A65)' }} />
-                  <CardContent sx={{ p: 3 }}>
-                    <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
-                      <Box
-                        sx={{
-                          width: 56, height: 56, borderRadius: 2,
-                          background: 'linear-gradient(135deg, #FF7043, #FF8A65)',
-                          display: 'flex', flexDirection: 'column', alignItems: 'center',
-                          justifyContent: 'center', flexShrink: 0,
-                        }}
-                      >
-                        <Typography variant="h6" sx={{ fontWeight: 800, color: 'white', lineHeight: 1 }}>
-                          {new Date(event.dataInicio).getDate()}
-                        </Typography>
-                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.8)', textTransform: 'uppercase', fontSize: '0.6rem' }}>
-                          {new Date(event.dataInicio).toLocaleString('pt-BR', { month: 'short' })}
-                        </Typography>
-                      </Box>
-                      <Box>
-                        <Typography variant="h6" gutterBottom sx={{ fontWeight: 700 }}>{event.nome}</Typography>
-                        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                          {event.descricao?.slice(0, 80)}...
-                        </Typography>
-                        <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                          {event.eventosCidades?.slice(0, 2).map((ec: any) => (
-                            <Chip key={ec.cidade?.id} label={ec.cidade?.nome} size="small" variant="outlined" color="secondary" />
-                          ))}
-                        </Box>
-                      </Box>
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
-            ))}
-          </Grid>
-        </Container>
+        </PageContainer>
       )}
 
-      {/* ===== CTA SECTION ===== */}
+      {/* Detalhes do evento — mesmo dialog da agenda, aberto direto daqui */}
+      <EventDetailsDialog event={detailEvent} onClose={() => setDetailEvent(null)} />
+
+      {/* ===== CTA FINAL (único gradiente além do hero) ===== */}
       <Box
+        component="section"
         sx={{
-          py: 12,
-          background: 'linear-gradient(135deg, #0097A7 0%, #006978 50%, #1A2332 100%)',
-          position: 'relative', overflow: 'hidden',
+          py: { xs: 8, md: 10 },
+          background: (t) =>
+            `linear-gradient(135deg, ${t.palette.primary.dark} 0%, ${t.palette.primary.main} 100%)`,
+          color: 'primary.contrastText',
         }}
       >
-        <Box sx={{
-          position: 'absolute', inset: 0,
-          backgroundImage: 'radial-gradient(circle at 20% 50%, rgba(0,188,212,0.2) 0%, transparent 50%), radial-gradient(circle at 80% 50%, rgba(255,112,67,0.15) 0%, transparent 50%)',
-        }} />
-        <Container maxWidth="md" sx={{ textAlign: 'center', position: 'relative' }}>
-          <BeachAccess sx={{ fontSize: 60, color: 'rgba(255,255,255,0.2)', mb: 2 }} />
-          <Typography variant="h2" sx={{ fontWeight: 800, color: 'white', mb: 2 }}>
+        <PageContainer maxWidth="reading" gutterTop={false} sx={{ pb: 0, textAlign: 'center' }}>
+          <EventIcon aria-hidden sx={{ fontSize: 44, opacity: 0.55, mb: 2 }} />
+          <Typography variant="h2" component="h2" sx={{ mb: 2, color: 'inherit' }}>
             Quer viajar pelo Rio Grande do Norte?
           </Typography>
-          <Typography variant="h6" sx={{ color: 'rgba(255,255,255,0.8)', mb: 5, fontWeight: 400 }}>
-            Crie sua conta no HospedaRN e descubra as melhores hospedagens, eventos
-            e destinos que o RN tem a oferecer.
+          <Typography
+            variant="body1"
+            sx={{ mb: 4, mx: 'auto', maxWidth: 560, color: 'inherit', opacity: 0.9 }}
+          >
+            Crie sua conta no HospedaRN e descubra as melhores hospedagens, eventos e destinos que o
+            RN tem a oferecer.
           </Typography>
           <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap' }}>
             <Button
@@ -520,9 +763,9 @@ export default function HomePage() {
               size="large"
               onClick={() => navigate('/cadastro')}
               sx={{
-                bgcolor: 'white', color: 'primary.main',
-                '&:hover': { bgcolor: 'rgba(255,255,255,0.9)' },
-                px: 4, py: 1.75,
+                bgcolor: 'background.paper',
+                color: 'primary.main',
+                '&:hover': { bgcolor: 'background.paper', filter: 'brightness(0.97)' },
               }}
             >
               Criar conta gratuita
@@ -531,12 +774,20 @@ export default function HomePage() {
               variant="outlined"
               size="large"
               onClick={() => navigate('/busca')}
-              sx={{ borderColor: 'rgba(255,255,255,0.5)', color: 'white', px: 4, py: 1.75 }}
+              startIcon={<Search />}
+              sx={{
+                color: 'inherit',
+                borderColor: (t) => alpha(t.palette.primary.contrastText, 0.5),
+                '&:hover': {
+                  borderColor: 'primary.contrastText',
+                  bgcolor: (t) => alpha(t.palette.primary.contrastText, 0.12),
+                },
+              }}
             >
               Explorar hospedagens
             </Button>
           </Box>
-        </Container>
+        </PageContainer>
       </Box>
     </Box>
   );

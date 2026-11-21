@@ -7,7 +7,26 @@ declare global {
   }
 }
 
-const API_BASE_URL = window.__ENV__?.VITE_API_URL || import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+const LOCAL_API_BASE_URL = 'http://localhost:3000/api';
+const PRODUCTION_API_BASE_URL = 'https://hospeda-rn-api.vercel.app/api';
+
+function resolveApiBaseUrl(): string {
+  const runtimeUrl = window.__ENV__?.VITE_API_URL || import.meta.env.VITE_API_URL;
+  if (runtimeUrl) {
+    return runtimeUrl.replace(/\/+$/, '');
+  }
+
+  // Em produção o front (hospeda-rn.vercel.app) e a API (hospeda-rn-api.vercel.app)
+  // são projetos Vercel separados; sem VITE_API_URL o fallback precisa apontar
+  // para a API publicada, nunca para localhost.
+  if (typeof window !== 'undefined' && /\.vercel\.app$/i.test(window.location.hostname)) {
+    return PRODUCTION_API_BASE_URL;
+  }
+
+  return LOCAL_API_BASE_URL;
+}
+
+const API_BASE_URL = resolveApiBaseUrl();
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
@@ -167,12 +186,36 @@ export const reservationsApi = {
   finalize: (id: string) => api.patch(`/reservas/${id}/finalize`),
 };
 
+/**
+ * Check-in — central operacional do estabelecimento.
+ * O estabelecimento é resolvido no backend pelo vínculo do usuário; a query
+ * `estabelecimentoId` é opcional e serve ao caso de mais de um estabelecimento.
+ */
+export const checkinsApi = {
+  list: (params?: any) => api.get('/checkins', { params }),
+  getByReserva: (reservaId: string) => api.get(`/checkins/${reservaId}`),
+  create: (data: any) => api.post('/checkins', data),
+};
+
+/**
+ * Check-out — encerramento das hospedagens em andamento.
+ * Mesmo desenho do check-in: o estabelecimento vem do vínculo do usuário e
+ * `estabelecimentoId` só é enviado quando há mais de um estabelecimento.
+ */
+export const checkoutsApi = {
+  list: (params?: any) => api.get('/checkouts', { params }),
+  getByReserva: (reservaId: string) => api.get(`/checkouts/${reservaId}`),
+  create: (data: any) => api.post('/checkouts', data),
+};
+
 export const paymentsApi = {
   create: (data: any) => api.post('/pagamentos', data),
   getByReservation: (id: string) => api.get(`/pagamentos/reserva/${id}`),
   generatePix: (reservationId: string) => api.get(`/pagamentos/pix/${reservationId}`),
   createCheckoutMP: (reservationId: string, metodo: 'PIX' | 'BOLETO' | 'CARTAO') =>
     api.post(`/pagamentos/reserva/${reservationId}/checkout-mp`, { metodo }),
+  syncMP: (reservationId: string) =>
+    api.post(`/pagamentos/reserva/${reservationId}/sincronizar`),
   getCheckout: (reservationId: string) => api.get(`/pagamentos/checkout/${reservationId}`),
   confirm: (id: string) => api.post(`/pagamentos/${id}/confirm`),
   uploadComprovante: (id: string, file: File) => {
@@ -247,6 +290,7 @@ export const accommodationTypesApi = {
 export const fotosApi = {
   findByEstablishment: (id: string) => api.get(`/fotos/estabelecimento/${id}`),
   findByRoom: (id: string) => api.get(`/fotos/quarto/${id}`),
+  findByEvent: (id: string) => api.get(`/fotos/evento/${id}`),
   create: (data: any) => api.post('/fotos', data),
   update: (id: string, data: any) => api.patch(`/fotos/${id}`, data),
   delete: (id: string) => api.delete(`/fotos/${id}`),

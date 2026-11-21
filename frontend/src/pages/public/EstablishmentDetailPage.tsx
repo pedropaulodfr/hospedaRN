@@ -1,25 +1,41 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { alpha } from '@mui/material/styles';
 import {
-  Box, Container, Grid, Typography, Button, TextField,
-  Card, CardContent, CardMedia, Rating, Chip,
-  Skeleton, IconButton, Paper, Divider, useTheme, useMediaQuery,
+  Box, Button, ButtonBase, Typography, TextField,
+  Card, CardContent, Rating, Chip, Avatar,
+  Skeleton, IconButton, Divider,
   Select, MenuItem, FormControl, InputLabel, Dialog, DialogTitle,
   DialogContent, Alert,
-  ImageList, ImageListItem,
 } from '@mui/material';
 import {
   Wifi, Pool, LocalParking, FreeBreakfast, Tv, AcUnit, Kitchen, Pets,
   FitnessCenter, LocalBar, Restaurant, RoomService, Star, LocationOn,
-  Phone, Language, ArrowBack, CalendarToday, People, AccountBalanceWallet,
-  ContentCopy, CheckCircle, CreditCard, Receipt, Email, Close
+  Phone, ArrowBack, ChevronLeft, ChevronRight, People, AccountBalanceWallet,
+  ContentCopy, CheckCircle, CreditCard, Receipt, Email, Close, RateReviewOutlined,
 } from '@mui/icons-material';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import toast from 'react-hot-toast';
-import { establishmentsApi, roomsApi, reservationsApi, paymentsApi, regrasApi } from '../../services/api';
+import { establishmentsApi, roomsApi, reservationsApi, paymentsApi, regrasApi, reviewsApi } from '../../services/api';
+import { invalidateGuestReservations } from '../../services/queryKeys';
+import { FavoriteButton } from '../../components/favorites/FavoriteButton';
 import { useAuthStore } from '../../stores/authStore';
+import {
+  PageContainer,
+  PageHeader,
+  SectionCard,
+  EmptyState,
+  ErrorState,
+  ModoPagamentoChip,
+  InfoGrid,
+  InfoItem,
+  InfoRow,
+  FormGrid,
+  MediaFallback,
+} from '../../components/common';
+import { radius, formatCurrency, formatDate } from '../../theme/tokens';
 
 // Fix Leaflet marker icon asset paths in Vite
 const DefaultIcon = L.icon({
@@ -61,9 +77,8 @@ function MapController({ center }: { center: [number, number] }) {
 }
 
 export default function EstablishmentDetailPage() {
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { id } = useParams<{ id: string }>();
   const { isAuthenticated, user } = useAuthStore();
 
@@ -98,7 +113,7 @@ export default function EstablishmentDetailPage() {
   const [cardSimulated, setCardSimulated] = useState(false);
 
   // Query details
-  const { data: establishment, isLoading, error } = useQuery({
+  const { data: establishment, isLoading, error, refetch } = useQuery({
     queryKey: ['establishmentDetail', id],
     queryFn: () => establishmentsApi.getOne(id!).then(res => res.data.data),
     enabled: !!id,
@@ -145,43 +160,68 @@ export default function EstablishmentDetailPage() {
     enabled: !!selectedRoomId && isDatesValid,
   });
 
+  // Query avaliações (endpoint público de leitura)
+  const {
+    data: avaliacoes,
+    isLoading: isLoadingReviews,
+    error: reviewsError,
+    refetch: refetchReviews,
+  } = useQuery({
+    queryKey: ['establishmentReviews', id],
+    queryFn: () => reviewsApi.getByEstablishment(id!).then(res => res.data.data || res.data || []),
+    enabled: !!id,
+  });
+
   if (isLoading) {
     return (
-      <Container maxWidth="lg" sx={{ py: 12 }}>
-        <Skeleton variant="text" width="60%" height={60} sx={{ mb: 2 }} />
-        <Skeleton variant="text" width="40%" height={30} sx={{ mb: 4 }} />
-        <Grid container spacing={4}>
-          <Grid size={{ xs: 12, md: 8 }}>
-            <Skeleton variant="rectangular" width="100%" height={400} sx={{ borderRadius: 4, mb: 4 }} />
-            <Skeleton variant="text" height={100} />
-          </Grid>
-          <Grid size={{ xs: 12, md: 4 }}>
-            <Skeleton variant="rectangular" width="100%" height={300} sx={{ borderRadius: 4 }} />
-          </Grid>
-        </Grid>
-      </Container>
+      <PageContainer maxWidth="content">
+        <Skeleton variant="text" width="18%" height={24} sx={{ mb: 2.5 }} />
+        <Skeleton variant="text" width="60%" height={48} />
+        <Skeleton variant="text" width="38%" height={24} sx={{ mb: 3 }} />
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: { xs: 'minmax(0, 1fr)', md: 'minmax(0, 1fr) 384px' },
+            gap: { xs: 2.5, md: 3 },
+          }}
+        >
+          <Box sx={{ display: 'grid', gap: 2.5 }}>
+            <Skeleton variant="rounded" height={240} sx={{ display: { xs: 'block', md: 'none' } }} />
+            <Skeleton variant="rounded" height={420} sx={{ display: { xs: 'none', md: 'block' } }} />
+            <Skeleton variant="rounded" height={180} />
+            <Skeleton variant="rounded" height={240} />
+          </Box>
+          <Skeleton variant="rounded" height={420} sx={{ display: { xs: 'none', md: 'block' } }} />
+        </Box>
+      </PageContainer>
     );
   }
 
   if (error || !establishment) {
     return (
-      <Container maxWidth="md" sx={{ py: 12, textAlign: 'center' }}>
-        <Alert severity="error" sx={{ borderRadius: 3, mb: 4 }}>
-          Não foi possível carregar os detalhes do estabelecimento.
-        </Alert>
-        <Button variant="contained" onClick={() => navigate('/busca')}>
-          Voltar para a Busca
-        </Button>
-      </Container>
+      <PageContainer maxWidth="form">
+        <ErrorState
+          title="Não foi possível carregar os detalhes do estabelecimento."
+          description="Verifique sua conexão e tente novamente. Se o problema continuar, volte para a busca."
+          onRetry={() => refetch()}
+        />
+        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
+          <Button variant="contained" onClick={() => navigate('/busca')}>
+            Voltar para a busca
+          </Button>
+        </Box>
+      </PageContainer>
     );
   }
 
   // Gallery Photos
   const photos = establishment.fotos && establishment.fotos.length > 0
     ? [...establishment.fotos].sort((a: any, b: any) => a.ordem - b.ordem)
-    : [{ url: establishment.fotoPerfil || 'https://placehold.co/800x450/0097A7/FFFFFF?text=HospedaRN' }];
+    : establishment.fotoPerfil
+      ? [{ url: establishment.fotoPerfil }]
+      : [];
 
-  const activePhotoUrl = photos[activePhotoIndex]?.url || 'https://placehold.co/800x450/0097A7/FFFFFF?text=HospedaRN';
+  const activePhotoUrl = photos[activePhotoIndex]?.url;
 
   const selectedRoom = establishment.quartos?.find((r: any) => r.id === selectedRoomId);
 
@@ -246,17 +286,17 @@ export default function EstablishmentDetailPage() {
       const reserva = resReserva.data.data;
       setCreatedReservation(reserva);
 
-      const isMpMode = reserva.estabelecimento?.modoPagamento === 'MERCADO_PAGO';
+      // A reserva nasce aqui: marca a lista de "Minhas Reservas" como
+      // desatualizada para ela aparecer sem precisar de F5.
+      void invalidateGuestReservations(queryClient);
+
+      const isMpMode =
+        (reserva.modoPagamento ?? reserva.estabelecimento?.modoPagamento) === 'MERCADO_PAGO';
 
       if (isMpMode) {
-        // Mercado Pago: payment object + checkout via plataforma
-        try {
-          const resMp = await paymentsApi.createCheckoutMP(reserva.id, paymentMethod);
-          const data = resMp.data?.data || resMp.data;
-          if (data?.checkout) setMpCheckout(data);
-        } catch (err) {
-          console.error('Falha ao gerar checkout Mercado Pago', err);
-        }
+        // Mercado Pago: a cobrança só é liberada depois que o estabelecimento
+        // aprovar a solicitação — o hóspede paga em "Minhas Reservas".
+        setMpCheckout(null);
       } else {
         // 2. Create Payment choice
         await paymentsApi.create({
@@ -309,397 +349,649 @@ export default function EstablishmentDetailPage() {
     }
   };
 
-  const isMpEstabelecimento = establishment?.modoPagamento === 'MERCADO_PAGO';
+  const isMpEstabelecimento =
+    (createdReservation?.modoPagamento ?? establishment?.modoPagamento) === 'MERCADO_PAGO';
+
+  const cidadeUF = [establishment.cidade?.nome, establishment.cidade?.estado]
+    .filter(Boolean)
+    .join(' · ');
 
   return (
-    <Box sx={{ bgcolor: 'background.default', minHeight: '100vh', pt: { xs: 8, md: 10 } }}>
-      <Container maxWidth="lg" sx={{ py: 4 }}>
-        {/* Back navigation */}
-        <Box sx={{ mb: 3 }}>
-          <Button
-            startIcon={<ArrowBack />}
-            onClick={() => navigate(-1)}
-            sx={{ fontWeight: 600, color: 'text.secondary' }}
-          >
-            Voltar
-          </Button>
-        </Box>
+    <PageContainer maxWidth="content">
+      <Button
+        startIcon={<ArrowBack />}
+        onClick={() => navigate(-1)}
+        sx={{ mb: { xs: 2, md: 2.5 }, ml: -0.5, fontWeight: 600, color: 'text.secondary' }}
+      >
+        Voltar
+      </Button>
 
-        {/* ================= HEADER ================= */}
-        <Box sx={{ mb: 4 }}>
-          <Typography
-            variant="h3"
+      {/* ================= CABEÇALHO ================= */}
+      <PageHeader
+        title={establishment.nome}
+        overline={cidadeUF || undefined}
+        subtitle={establishment.endereco || cidadeUF || 'Localização não informada'}
+        actions={
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+            <FavoriteButton
+              estabelecimentoId={establishment.id}
+              nome={establishment.nome}
+              variant="labeled"
+            />
+            {establishment.totalAvaliacoes > 0 ? (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                <Star aria-hidden sx={{ color: 'warning.main', fontSize: 20 }} />
+                <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                  {Number(establishment.notaMedia).toFixed(1)}
+                </Typography>
+                <Typography variant="body2" color="textSecondary">
+                  ({establishment.totalAvaliacoes}{' '}
+                  {establishment.totalAvaliacoes === 1 ? 'avaliação' : 'avaliações'})
+                </Typography>
+              </Box>
+            ) : (
+              <Typography variant="body2" color="textSecondary">
+                Sem avaliações ainda
+              </Typography>
+            )}
+            <ModoPagamentoChip modo={establishment.modoPagamento} size="medium" />
+          </Box>
+        }
+      />
+
+      {establishment.comodidades && establishment.comodidades.length > 0 && (
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mb: { xs: 2.5, md: 3 } }}>
+          {establishment.comodidades.slice(0, 6).map((item: any) => (
+            <Chip
+              key={item.comodidade.id}
+              size="small"
+              variant="outlined"
+              icon={AMENITY_ICONS[item.comodidade.nome] || <Wifi />}
+              label={item.comodidade.nome}
+            />
+          ))}
+          {establishment.comodidades.length > 6 && (
+            <Chip
+              size="small"
+              variant="outlined"
+              label={`+${establishment.comodidades.length - 6} comodidades`}
+            />
+          )}
+        </Box>
+      )}
+
+      {/* ================= LAYOUT EM 2 COLUNAS ================= */}
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: { xs: 'minmax(0, 1fr)', md: 'minmax(0, 1fr) 384px' },
+          gridTemplateAreas: {
+            xs: '"galeria" "reserva" "conteudo"',
+            md: '"galeria reserva" "conteudo reserva"',
+          },
+          gap: { xs: 2.5, md: 3 },
+        }}
+      >
+        {/* ================= GALERIA ================= */}
+        <Box sx={{ gridArea: 'galeria', minWidth: 0, alignSelf: 'start' }}>
+          <Box
             sx={{
-              fontWeight: 800,
-              fontFamily: '"Outfit", sans-serif',
-              mb: 1,
-              background: 'linear-gradient(135deg, #1A2332, #0097A7)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
+              position: 'relative',
+              p: 1,
+              bgcolor: 'background.paper',
+              border: '1px solid',
+              borderColor: 'divider',
+              borderRadius: `${radius.xl}px`,
+              overflow: 'hidden',
             }}
           >
-            {establishment.nome}
-          </Typography>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-              <Star sx={{ color: 'warning.main' }} />
-              <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                {Number(establishment.notaMedia).toFixed(1)}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                ({establishment.totalAvaliacoes} {establishment.totalAvaliacoes === 1 ? 'avaliação' : 'avaliações'})
-              </Typography>
-            </Box>
-            <Chip
-              icon={<LocationOn />}
-              label={`${establishment.cidade?.nome}, ${establishment.cidade?.estado}`}
-              variant="outlined"
-              size="small"
-              sx={{ fontWeight: 600 }}
-            />
-          </Box>
-        </Box>
-
-        {/* ================= CONTENT LAYOUT ================= */}
-        <Grid container spacing={4}>
-          {/* LEFT COLUMN: Photos, Details, amenities, rules, map */}
-          <Grid size={{ xs: 12, md: 8 }}>
-            {/* Gallery */}
-            <Card sx={{ borderRadius: 4, overflow: 'hidden', boxShadow: '0 4px 20px rgba(0,0,0,0.06)', mb: 4 }}>
-              <CardMedia
-                component="img"
-                image={activePhotoUrl}
-                alt={establishment.nome}
-                sx={{
-                  height: { xs: 260, sm: 450 },
-                  width: '100%',
-                  objectFit: 'cover',
-                  transition: 'all 0.5s ease',
+            <Box
+              sx={{
+                display: { xs: 'block', md: 'grid' },
+                gridTemplateColumns:
+                  photos.length > 1 ? 'minmax(0, 2fr) minmax(0, 1fr)' : 'minmax(0, 1fr)',
+                gridTemplateRows: photos.length > 1 ? 'repeat(2, minmax(0, 1fr))' : 'auto',
+                gap: 1,
+              }}
+            >
+              <ButtonBase
+                onClick={() => {
+                  if (photos.length > 0) handleOpenRoomGallery(photos, activePhotoIndex);
                 }}
-              />
-              {photos.length > 1 && (
-                <Box
+                aria-label={
+                  photos.length > 0
+                    ? `Ampliar foto de ${establishment.nome}`
+                    : `Sem foto disponível de ${establishment.nome}`
+                }
+                sx={{
+                  display: 'block',
+                  width: '100%',
+                  gridColumn: { md: '1' },
+                  gridRow: { md: photos.length > 1 ? '1 / 3' : '1' },
+                  borderRadius: `${radius.md}px`,
+                  overflow: 'hidden',
+                  cursor: photos.length > 0 ? 'pointer' : 'default',
+                }}
+              >
+                {activePhotoUrl ? (
+                  <Box
+                    component="img"
+                    src={activePhotoUrl}
+                    alt={`${establishment.nome} — foto ${activePhotoIndex + 1} de ${photos.length}`}
+                    sx={{
+                      width: '100%',
+                      height: { xs: 240, sm: 320, md: 420 },
+                      objectFit: 'cover',
+                      display: 'block',
+                    }}
+                  />
+                ) : (
+                  <MediaFallback
+                    variant="establishment"
+                    label={establishment.nome}
+                    size="lg"
+                    sx={{ height: { xs: 240, sm: 320, md: 420 } }}
+                  />
+                )}
+              </ButtonBase>
+
+              {photos.length > 1 &&
+                photos.slice(1, 3).map((photo: any, idx: number) => (
+                  <ButtonBase
+                    key={photo.id || idx}
+                    onClick={() => setActivePhotoIndex(idx + 1)}
+                    aria-label={`Ver foto ${idx + 2} de ${photos.length}`}
+                    sx={{
+                      display: { xs: 'none', md: 'block' },
+                      gridColumn: { md: '2' },
+                      gridRow: { md: `${idx + 1}` },
+                      borderRadius: `${radius.md}px`,
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <Box
+                      component="img"
+                      src={photo.url}
+                      alt={`${establishment.nome} — foto ${idx + 2}`}
+                      sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                    />
+                  </ButtonBase>
+                ))}
+            </Box>
+
+            {photos.length > 1 && (
+              <Button
+                size="small"
+                onClick={() => handleOpenRoomGallery(photos, activePhotoIndex)}
+                sx={(t) => ({
+                  position: 'absolute',
+                  right: 20,
+                  bottom: 20,
+                  bgcolor: alpha(t.palette.common.black, 0.62),
+                  color: t.palette.common.white,
+                  border: `1px solid ${alpha(t.palette.common.white, 0.24)}`,
+                  '&:hover': { bgcolor: alpha(t.palette.common.black, 0.8) },
+                })}
+              >
+                Ver {photos.length} fotos
+              </Button>
+            )}
+          </Box>
+
+          {/* Faixa de miniaturas (mobile/tablet) */}
+          {photos.length > 1 && (
+            <Box
+              sx={{
+                display: { xs: 'flex', md: 'none' },
+                gap: 1,
+                mt: 1.5,
+                overflowX: 'auto',
+                pb: 0.5,
+              }}
+            >
+              {photos.map((photo: any, index: number) => (
+                <ButtonBase
+                  key={photo.id || index}
+                  onClick={() => setActivePhotoIndex(index)}
+                  aria-label={`Ver foto ${index + 1} de ${photos.length}`}
                   sx={{
-                    display: 'flex',
-                    gap: 1.5,
-                    p: 2,
-                    bgcolor: 'background.paper',
-                    overflowX: 'auto',
-                    borderTop: '1px solid rgba(0,0,0,0.05)',
+                    flexShrink: 0,
+                    width: 84,
+                    height: 60,
+                    borderRadius: `${radius.sm}px`,
+                    overflow: 'hidden',
+                    border: '2px solid',
+                    borderColor: activePhotoIndex === index ? 'primary.main' : 'transparent',
+                    opacity: activePhotoIndex === index ? 1 : 0.72,
+                    '&:hover': { opacity: 1 },
                   }}
                 >
-                  {photos.map((photo: any, index: number) => (
+                  <Box
+                    component="img"
+                    src={photo.url}
+                    alt={`${establishment.nome} — miniatura ${index + 1}`}
+                    sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                  />
+                </ButtonBase>
+              ))}
+            </Box>
+          )}
+        </Box>
+
+        {/* ================= COLUNA DE CONTEÚDO ================= */}
+        <Box
+          sx={{
+            gridArea: 'conteudo',
+            minWidth: 0,
+            alignSelf: 'start',
+            display: 'grid',
+            gap: { xs: 2.5, md: 3 },
+          }}
+        >
+          <SectionCard title="Sobre o estabelecimento">
+            <Typography variant="body1" color="textSecondary" sx={{ whiteSpace: 'pre-line' }}>
+              {establishment.descricao || 'Nenhuma descrição fornecida.'}
+            </Typography>
+          </SectionCard>
+
+          {/* Comodidades */}
+          {establishment.comodidades && establishment.comodidades.length > 0 && (
+            <SectionCard title="Comodidades">
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: {
+                    xs: 'repeat(2, minmax(0, 1fr))',
+                    sm: 'repeat(2, minmax(0, 1fr))',
+                    lg: 'repeat(3, minmax(0, 1fr))',
+                  },
+                  gap: 2,
+                }}
+              >
+                {establishment.comodidades.map((item: any) => (
+                  <Box
+                    key={item.comodidade.id}
+                    sx={{ display: 'flex', alignItems: 'center', gap: 1.25, minWidth: 0 }}
+                  >
                     <Box
-                      key={photo.id || index}
-                      onClick={() => setActivePhotoIndex(index)}
+                      aria-hidden
                       sx={{
-                        width: 80,
-                        height: 60,
+                        width: 36,
+                        height: 36,
                         borderRadius: 2,
-                        overflow: 'hidden',
-                        cursor: 'pointer',
-                        border: activePhotoIndex === index ? `3px solid ${theme.palette.primary.main}` : '3px solid transparent',
-                        transition: 'all 0.2s',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        bgcolor: 'action.selected',
+                        color: 'primary.main',
                         flexShrink: 0,
-                        opacity: activePhotoIndex === index ? 1 : 0.7,
-                        '&:hover': { opacity: 1 },
+                        '& svg': { fontSize: 20 },
                       }}
                     >
-                      <img
-                        src={photo.url}
-                        alt={`Thumbnail ${index + 1}`}
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                      />
+                      {AMENITY_ICONS[item.comodidade.nome] || <Wifi />}
                     </Box>
-                  ))}
-                </Box>
-              )}
-            </Card>
+                    <Typography variant="body2" sx={{ fontWeight: 500, overflowWrap: 'anywhere' }}>
+                      {item.comodidade.nome}
+                    </Typography>
+                  </Box>
+                ))}
+              </Box>
+            </SectionCard>
+          )}
 
-            {/* Description */}
-            <Paper elevation={0} sx={{ p: 4, borderRadius: 4, border: '1px solid rgba(0,0,0,0.05)', mb: 4 }}>
-              <Typography variant="h5" sx={{ fontWeight: 700, fontFamily: '"Outfit", sans-serif', mb: 2 }}>
-                Sobre o estabelecimento
-              </Typography>
-              <Typography variant="body1" color="text.secondary" sx={{ lineHeight: 1.8 }}>
-                {establishment.descricao || 'Nenhuma descrição fornecida.'}
-              </Typography>
-            </Paper>
-
-            {/* Amenities */}
-            {establishment.comodidades && establishment.comodidades.length > 0 && (
-              <Paper elevation={0} sx={{ p: 4, borderRadius: 4, border: '1px solid rgba(0,0,0,0.05)', mb: 4 }}>
-                <Typography variant="h5" sx={{ fontWeight: 700, fontFamily: '"Outfit", sans-serif', mb: 2 }}>
-                  Comodidades e Vantagens
-                </Typography>
-                <Grid container spacing={2}>
-                  {establishment.comodidades.map((item: any) => (
-                    <Grid key={item.comodidade.id} size={{ xs: 6, sm: 4 }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, color: 'text.primary' }}>
-                        <Box sx={{ color: 'primary.main', display: 'flex', alignItems: 'center' }}>
-                          {AMENITY_ICONS[item.comodidade.nome] || <Wifi />}
+          {/* Acomodações */}
+          {establishment.quartos && establishment.quartos.length > 0 && (
+            <SectionCard
+              title="Acomodações"
+              subtitle="Selecione uma opção aqui ou direto no card de reserva."
+            >
+              <Box sx={{ display: 'grid', gap: 2 }}>
+                {establishment.quartos.map((room: any) => {
+                  const roomPhotos = room.fotos?.length > 0
+                    ? [...room.fotos].sort((a: any, b: any) => a.ordem - b.ordem)
+                    : null;
+                  // Se houver mais de 4 fotos, mostra 3 + célula "+N" para caber
+                  // exatamente na grade; assim nenhuma sobra de fundo aparece.
+                  const fotosVisiveis: any[] = roomPhotos
+                    ? roomPhotos.length > 4
+                      ? roomPhotos.slice(0, 3)
+                      : roomPhotos.slice(0, 4)
+                    : [];
+                  const colunasFotos = fotosVisiveis.length + (roomPhotos && roomPhotos.length > 4 ? 1 : 0);
+                  const isSelected = selectedRoomId === room.id;
+                  return (
+                    <Card
+                      key={room.id}
+                      onClick={() => setSelectedRoomId(room.id)}
+                      sx={{
+                        overflow: 'hidden',
+                        cursor: 'pointer',
+                        borderWidth: isSelected ? 2 : 1,
+                        borderColor: isSelected ? 'primary.main' : 'divider',
+                        transition: 'border-color 180ms, box-shadow 180ms',
+                        '&:hover': { borderColor: isSelected ? 'primary.main' : 'primary.light' },
+                      }}
+                    >
+                      {roomPhotos ? (
+                        <Box
+                          sx={{
+                            display: 'grid',
+                            // As fotos preenchem a largura do card (1, 2, 3 ou 4
+                            // colunas) — sem faixa escura sobrando ao lado.
+                            gridTemplateColumns: `repeat(${Math.max(colunasFotos, 1)}, minmax(0, 1fr))`,
+                            gap: '2px',
+                            bgcolor: 'action.hover',
+                          }}
+                        >
+                          {fotosVisiveis.map((photo: any, idx: number) => (
+                            <ButtonBase
+                              key={photo.id}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenRoomGallery(roomPhotos, idx);
+                              }}
+                              aria-label={`Ampliar foto ${idx + 1} de ${room.nome}`}
+                              sx={{
+                                position: 'relative',
+                                width: '100%',
+                                height: { xs: 88, sm: 112 },
+                                overflow: 'hidden',
+                              }}
+                            >
+                              <Box
+                                component="img"
+                                src={photo.url}
+                                alt={`${room.nome} — foto ${idx + 1}`}
+                                loading="lazy"
+                                sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                              />
+                            </ButtonBase>
+                          ))}
+                          {roomPhotos.length > 4 && (
+                            <ButtonBase
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenRoomGallery(roomPhotos, 3);
+                              }}
+                              aria-label={`Ver todas as ${roomPhotos.length} fotos de ${room.nome}`}
+                              sx={{
+                                position: 'relative',
+                                width: '100%',
+                                height: { xs: 88, sm: 112 },
+                                overflow: 'hidden',
+                              }}
+                            >
+                              <Box
+                                component="img"
+                                src={roomPhotos[3].url}
+                                alt=""
+                                loading="lazy"
+                                sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                              />
+                              <Box
+                                sx={(t) => ({
+                                  position: 'absolute',
+                                  inset: 0,
+                                  bgcolor: alpha(t.palette.common.black, 0.58),
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                })}
+                              >
+                                <Typography variant="subtitle2" sx={{ color: 'common.white', fontWeight: 700 }}>
+                                  +{roomPhotos.length - 3}
+                                </Typography>
+                              </Box>
+                            </ButtonBase>
+                          )}
                         </Box>
-                        <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                          {item.comodidade.nome}
-                        </Typography>
-                      </Box>
-                    </Grid>
-                  ))}
-                </Grid>
-              </Paper>
-            )}
+                      ) : (
+                        <Box sx={{ height: 112, overflow: 'hidden' }}>
+                          <MediaFallback variant="establishment" label={room.nome} />
+                        </Box>
+                      )}
 
-            {/* Rooms list */}
-            {establishment.quartos && establishment.quartos.length > 0 && (
-              <Paper elevation={0} sx={{ p: 4, borderRadius: 4, border: '1px solid rgba(0,0,0,0.05)', mb: 4 }}>
-                <Typography variant="h5" sx={{ fontWeight: 700, fontFamily: '"Outfit", sans-serif', mb: 3 }}>
-                  Opções de Acomodação
-                </Typography>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                  {establishment.quartos.map((room: any) => {
-                    const roomPhotos = room.fotos?.length > 0
-                      ? [...room.fotos].sort((a: any, b: any) => a.ordem - b.ordem)
-                      : null;
-                    const isSelected = selectedRoomId === room.id;
-                    return (
-                      <Card
-                        key={room.id}
-                        onClick={() => setSelectedRoomId(room.id)}
-                        sx={{
-                          borderRadius: 3,
-                          overflow: 'hidden',
-                          border: isSelected ? '2px solid' : '1px solid rgba(0,0,0,0.06)',
-                          borderColor: isSelected ? 'primary.main' : 'rgba(0,0,0,0.06)',
-                          boxShadow: isSelected ? '0 0 0 3px rgba(0,151,167,0.12)' : 'none',
-                          cursor: 'pointer',
-                          transition: 'all 0.2s ease',
-                          '&:hover': { borderColor: 'primary.light', boxShadow: '0 0 0 3px rgba(0,151,167,0.08)' },
-                        }}
-                      >
-                        {roomPhotos ? (
-                          <Box
-                            sx={{
-                              display: 'grid',
-                              gridTemplateColumns: roomPhotos.length >= 2 ? '1fr 1fr' : '1fr',
-                              gridTemplateRows: roomPhotos.length >= 3 ? '200px 100px' : '200px',
-                              gap: '2px',
-                              bgcolor: '#000',
-                            }}
-                          >
-                            {roomPhotos.slice(0, 4).map((photo: any, idx: number) => (
-                              <Box
-                                key={photo.id}
-                                onClick={() => handleOpenRoomGallery(roomPhotos, idx)}
-                                sx={{
-                                  position: 'relative',
-                                  overflow: 'hidden',
-                                  cursor: 'pointer',
-                                  height: idx === 0 && roomPhotos.length >= 3 ? '100%' : undefined,
-                                  gridRow: idx === 0 && roomPhotos.length >= 3 ? '1 / 3' : undefined,
-                                  '&:hover .overlay': { opacity: 1 },
-                                }}
-                              >
-                                <Box
-                                  component="img"
-                                  src={photo.url}
-                                  alt={room.nome}
-                                  sx={{
-                                    width: '100%',
-                                    height: '100%',
-                                    objectFit: 'cover',
-                                    display: 'block',
-                                  }}
-                                />
-                                <Box
-                                  className="overlay"
-                                  sx={{
-                                    position: 'absolute',
-                                    inset: 0,
-                                    bgcolor: 'rgba(0,0,0,0.3)',
-                                    opacity: 0,
-                                    transition: 'opacity 0.2s',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                  }}
-                                >
-                                </Box>
-                              </Box>
-                            ))}
-                            {roomPhotos.length > 4 && (
-                              <Box
-                                onClick={() => handleOpenRoomGallery(roomPhotos, 4)}
-                                sx={{
-                                  position: 'relative',
-                                  overflow: 'hidden',
-                                  cursor: 'pointer',
-                                  height: 100,
-                                  '&:hover .overlay': { opacity: 1 },
-                                }}
-                              >
-                                <Box
-                                  component="img"
-                                  src={roomPhotos[4].url}
-                                  alt={room.nome}
-                                  sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                                />
-                                <Box
-                                  className="overlay"
-                                  sx={{
-                                    position: 'absolute',
-                                    inset: 0,
-                                    bgcolor: 'rgba(0,0,0,0.5)',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                  }}
-                                >
-                                  <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700 }}>
-                                    +{roomPhotos.length - 4}
-                                  </Typography>
-                                </Box>
-                              </Box>
-                            )}
-                          </Box>
-                        ) : (
-                          <Box
-                            sx={{
-                              width: '100%',
-                              height: 130,
-                              bgcolor: 'rgba(0,151,167,0.06)',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                            }}
-                          >
-                            <Typography variant="body2" color="text.secondary">
-                              Sem foto
+                      <CardContent sx={{ p: { xs: 2, sm: 2.5 } }}>
+                        <Box
+                          sx={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'flex-start',
+                            gap: 2,
+                            flexWrap: 'wrap',
+                          }}
+                        >
+                          <Box sx={{ minWidth: 0 }}>
+                            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                              {room.nome}
+                            </Typography>
+                            <Typography
+                              variant="caption"
+                              color="textSecondary"
+                              sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}
+                            >
+                              <People aria-hidden sx={{ fontSize: 16 }} />
+                              Até {room.capacidade} {room.capacidade === 1 ? 'pessoa' : 'pessoas'} ·{' '}
+                              {room.tipoAcomodacao?.nome || 'Padrão'}
                             </Typography>
                           </Box>
-                        )}
-                        <CardContent sx={{ p: 3 }}>
-                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 1 }}>
-                            <Box>
-                              <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                                {room.nome}
-                              </Typography>
-                              <Typography variant="caption" color="text.secondary">
-                                Tipo: {room.tipoAcomodacao?.nome || 'Padrão'}
-                              </Typography>
-                            </Box>
-                            <Box sx={{ textAlign: { xs: 'left', sm: 'right' } }}>
-                              <Typography variant="h6" color="primary.main" sx={{ fontWeight: 800 }}>
-                                R$ {Number(room.precoBase).toFixed(2)}
-                              </Typography>
-                              <Typography variant="caption" color="text.secondary">
-                                por noite (base)
-                              </Typography>
-                            </Box>
+                          <Box sx={{ textAlign: { xs: 'left', sm: 'right' } }}>
+                            <Typography variant="subtitle1" color="primary" sx={{ fontWeight: 800 }}>
+                              {formatCurrency(room.precoBase)}
+                            </Typography>
+                            <Typography variant="caption" color="textSecondary" sx={{ whiteSpace: 'nowrap' }}>
+                              por noite (base)
+                            </Typography>
                           </Box>
-                          <Divider sx={{ my: 1.5 }} />
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: 'text.secondary' }}>
-                              <People sx={{ fontSize: 18 }} />
-                              <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                                Capacidade: {room.capacidade} {room.capacidade === 1 ? 'pessoa' : 'pessoas'}
-                              </Typography>
-                            </Box>
-                          </Box>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
-                </Box>
-              </Paper>
-            )}
+                        </Box>
 
-            {/* Rules and Timings */}
-            <Paper elevation={0} sx={{ p: 4, borderRadius: 4, border: '1px solid rgba(0,0,0,0.05)', mb: 4 }}>
-              <Typography variant="h5" sx={{ fontWeight: 700, fontFamily: '"Outfit", sans-serif', mb: 3 }}>
-                Regras e Informações Gerais
-              </Typography>
-              <Grid container spacing={3}>
-                {regras?.map((secao: any) => (
-                  <Grid key={secao.id} size={{ xs: 12, sm: 6 }}>
+                        {isSelected && (
+                          <Chip size="small" color="primary" label="Selecionada" sx={{ mt: 1.5 }} />
+                        )}
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </Box>
+            </SectionCard>
+          )}
+
+          {/* Regras e informações gerais */}
+          {regras && regras.length > 0 && (
+            <SectionCard title="Regras e informações gerais">
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: { xs: 'minmax(0, 1fr)', sm: 'repeat(2, minmax(0, 1fr))' },
+                  gap: 2.5,
+                }}
+              >
+                {regras.map((secao: any) => (
+                  <Box key={secao.id} sx={{ minWidth: 0 }}>
                     <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
                       {secao.nome}
                     </Typography>
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    <Box
+                      component="ul"
+                      sx={{ m: 0, pl: 2.25, display: 'grid', gap: 0.75 }}
+                    >
                       {secao.topicos?.map((topico: any) => (
-                        <Typography key={topico.id} variant="body2" color="text.secondary">
-                          {topico.valor ? <><strong>{topico.label}:</strong> {topico.valor}</> : `• ${topico.label}`}
+                        <Typography
+                          key={topico.id}
+                          component="li"
+                          variant="body2"
+                          color="textSecondary"
+                        >
+                          {topico.valor ? (
+                            <>
+                              <Box component="span" sx={{ color: 'text.primary', fontWeight: 600 }}>
+                                {topico.label}:
+                              </Box>{' '}
+                              {topico.valor}
+                            </>
+                          ) : (
+                            topico.label
+                          )}
                         </Typography>
                       ))}
                     </Box>
-                  </Grid>
+                  </Box>
                 ))}
-              </Grid>
-            </Paper>
-
-            {/* Location & Map */}
-            <Paper elevation={0} sx={{ p: 4, borderRadius: 4, border: '1px solid rgba(0,0,0,0.05)' }}>
-              <Typography variant="h5" sx={{ fontWeight: 700, fontFamily: '"Outfit", sans-serif', mb: 2 }}>
-                Localização
-              </Typography>
-              <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, mb: 3 }}>
-                <LocationOn sx={{ color: 'primary.main', mt: 0.3 }} />
-                <Box>
-                  <Typography variant="body1" sx={{ fontWeight: 600 }}>
-                    {establishment.endereco || 'Endereço não informado'}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    CEP {establishment.cep || '00000-000'} | {establishment.cidade?.nome} - {establishment.cidade?.estado}
-                  </Typography>
-                </Box>
               </Box>
+            </SectionCard>
+          )}
 
-              {establishment.latitude && establishment.longitude ? (
-                <Box sx={{ height: 300, borderRadius: 4, overflow: 'hidden', border: '1px solid rgba(0,0,0,0.08)' }}>
-                  <MapContainer
-                    center={[Number(establishment.latitude), Number(establishment.longitude)]}
-                    zoom={15}
-                    style={{ height: '100%', width: '100%', zIndex: 1 }}
-                  >
-                    <TileLayer
-                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                    />
-                    <Marker position={[Number(establishment.latitude), Number(establishment.longitude)]}>
-                      <Popup>
-                        <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>{establishment.nome}</Typography>
-                      </Popup>
-                    </Marker>
-                    <MapController center={[Number(establishment.latitude), Number(establishment.longitude)]} />
-                  </MapContainer>
-                </Box>
-              ) : (
-                <Alert severity="warning" sx={{ borderRadius: 3 }}>
-                  Coordenadas do mapa não cadastradas para este estabelecimento.
-                </Alert>
-              )}
-            </Paper>
-          </Grid>
+          {/* Avaliações */}
+          <SectionCard
+            title="Avaliações"
+            subtitle={
+              establishment.totalAvaliacoes > 0
+                ? `${establishment.totalAvaliacoes} ${establishment.totalAvaliacoes === 1 ? 'avaliação' : 'avaliações'} · média ${Number(establishment.notaMedia).toFixed(1)}`
+                : 'Ainda não há avaliações publicadas'
+            }
+          >
+            {isLoadingReviews ? (
+              <Box sx={{ display: 'grid', gap: 2.5 }}>
+                {[0, 1, 2].map((i) => (
+                  <Box key={i} sx={{ display: 'flex', gap: 1.5 }}>
+                    <Skeleton variant="circular" width={40} height={40} />
+                    <Box sx={{ flex: 1 }}>
+                      <Skeleton variant="text" width="35%" />
+                      <Skeleton variant="text" width="80%" />
+                    </Box>
+                  </Box>
+                ))}
+              </Box>
+            ) : reviewsError ? (
+              <ErrorState
+                compact
+                title="Não foi possível carregar as avaliações"
+                onRetry={() => refetchReviews()}
+              />
+            ) : !avaliacoes || avaliacoes.length === 0 ? (
+              <EmptyState
+                compact
+                icon={<RateReviewOutlined />}
+                title="Ainda não há avaliações"
+                description="As avaliações aparecem aqui depois que os hóspedes concluírem a estadia."
+              />
+            ) : (
+              <Box sx={{ display: 'grid', gap: 3 }}>
+                {avaliacoes.slice(0, 5).map((av: any) => (
+                  <Box key={av.id} sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-start' }}>
+                    <Avatar sx={{ width: 40, height: 40, fontSize: '0.9375rem', flexShrink: 0 }}>
+                      {av.reserva?.hospede?.nome?.charAt(0)?.toUpperCase() || '?'}
+                    </Avatar>
+                    <Box sx={{ minWidth: 0, flex: 1 }}>
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          flexWrap: 'wrap',
+                          alignItems: 'baseline',
+                          justifyContent: 'space-between',
+                          gap: 0.5,
+                        }}
+                      >
+                        <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                          {av.reserva?.hospede?.nome || 'Hóspede'}
+                        </Typography>
+                        <Typography variant="caption" color="textSecondary">
+                          {formatDate(av.criadoEm)}
+                        </Typography>
+                      </Box>
+                      <Rating
+                        value={Number(av.nota) || 0}
+                        readOnly
+                        size="small"
+                        getLabelText={(value) => `${value} de 5 estrelas`}
+                        aria-label={`Nota ${av.nota} de 5`}
+                        sx={{ mt: 0.5 }}
+                      />
+                      {av.comentario && (
+                        <Typography
+                          variant="body2"
+                          color="textSecondary"
+                          sx={{ mt: 1, whiteSpace: 'pre-line' }}
+                        >
+                          {av.comentario}
+                        </Typography>
+                      )}
+                    </Box>
+                  </Box>
+                ))}
+                {avaliacoes.length > 5 && (
+                  <Typography variant="caption" color="textSecondary">
+                    Exibindo as 5 avaliações mais recentes de {avaliacoes.length}.
+                  </Typography>
+                )}
+              </Box>
+            )}
+          </SectionCard>
 
-          {/* ================= RIGHT COLUMN: STICKY BOOKING FORM ================= */}
-          <Grid size={{ xs: 12, md: 4 }}>
-            <Box sx={{ position: 'sticky', top: 96 }}>
-              <Paper
-                elevation={3}
+          {/* Localização */}
+          <SectionCard title="Localização">
+            <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, mb: 2.5 }}>
+              <LocationOn
+                aria-hidden
+                sx={{ color: 'primary.main', fontSize: 22, mt: 0.25, flexShrink: 0 }}
+              />
+              <Box sx={{ minWidth: 0 }}>
+                <Typography variant="body1" sx={{ fontWeight: 600, overflowWrap: 'anywhere' }}>
+                  {establishment.endereco || 'Endereço não informado'}
+                </Typography>
+                <Typography variant="body2" color="textSecondary" sx={{ mt: 0.25 }}>
+                  CEP {establishment.cep || '00000-000'} · {cidadeUF || 'Cidade não informada'}
+                </Typography>
+              </Box>
+            </Box>
+
+            {establishment.latitude && establishment.longitude ? (
+              <Box
                 sx={{
-                  p: 3,
-                  borderRadius: 4,
-                  border: '1px solid rgba(255,255,255,0.4)',
-                  background: 'linear-gradient(135deg, rgba(255,255,255,0.9), rgba(255,255,255,0.75))',
-                  backdropFilter: 'blur(20px)',
-                  boxShadow: '0 8px 32px rgba(0,0,0,0.06)',
+                  height: { xs: 240, sm: 300, md: 340 },
+                  borderRadius: `${radius.lg}px`,
+                  overflow: 'hidden',
+                  border: '1px solid',
+                  borderColor: 'divider',
                 }}
               >
-                <Typography variant="h5" sx={{ fontWeight: 800, fontFamily: '"Outfit", sans-serif', mb: 3 }}>
-                  Reserve sua Estadia
-                </Typography>
+                <MapContainer
+                  center={[Number(establishment.latitude), Number(establishment.longitude)]}
+                  zoom={15}
+                  style={{ height: '100%', width: '100%', zIndex: 1 }}
+                >
+                  <TileLayer
+                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  />
+                  <Marker position={[Number(establishment.latitude), Number(establishment.longitude)]}>
+                    <Popup>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>{establishment.nome}</Typography>
+                    </Popup>
+                  </Marker>
+                  <MapController center={[Number(establishment.latitude), Number(establishment.longitude)]} />
+                </MapContainer>
+              </Box>
+            ) : (
+              <Alert severity="warning">
+                Coordenadas do mapa não cadastradas para este estabelecimento.
+              </Alert>
+            )}
+          </SectionCard>
+        </Box>
 
-                <form onSubmit={handleBookingSubmit}>
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+        {/* ================= CARD DE RESERVA ================= */}
+        <Box sx={{ gridArea: 'reserva', minWidth: 0 }}>
+          <Box sx={{ position: { md: 'sticky' }, top: { md: 88 } }}>
+            <SectionCard
+              title="Reserve sua estadia"
+              subtitle={
+                selectedRoom
+                  ? `Diária base ${formatCurrency(selectedRoom.precoBase)}`
+                  : 'Escolha a acomodação e as datas'
+              }
+            >
+              <Box component="form" onSubmit={handleBookingSubmit} sx={{ display: 'grid', gap: 2.25 }}>
                     {/* Room Selection */}
                     <FormControl fullWidth>
                       <InputLabel id="select-quarto-label">Acomodação</InputLabel>
@@ -756,38 +1048,34 @@ export default function EstablishmentDetailPage() {
                     />
 
                     {/* Guest selection */}
-                    <Grid container spacing={2}>
-                      <Grid size={{ xs: 6 }}>
-                        <TextField
-                          label="Adultos"
-                          type="number"
-                          value={adults}
-                          onChange={(e) => setAdults(e.target.value)}
-                          onBlur={() => setAdults(Math.max(1, Number(adults) || 1))}
-                          slotProps={{
-                            htmlInput: {
-                              min: 1,
-                            },
-                          }}
-                          fullWidth
-                        />
-                      </Grid>
-                      <Grid size={{ xs: 6 }}>
-                        <TextField
-                          label="Crianças"
-                          type="number"
-                          value={children}
-                          onChange={(e) => setChildren(e.target.value)}
-                          onBlur={() => setChildren(Math.max(0, Number(children) || 0))}
-                          slotProps={{
-                            htmlInput: {
-                              min: 0,
-                            },
-                          }}
-                          fullWidth
-                        />
-                      </Grid>
-                    </Grid>
+                    <FormGrid columns={2}>
+                      <TextField
+                        label="Adultos"
+                        type="number"
+                        value={adults}
+                        onChange={(e) => setAdults(e.target.value)}
+                        onBlur={() => setAdults(Math.max(1, Number(adults) || 1))}
+                        slotProps={{
+                          htmlInput: {
+                            min: 1,
+                          },
+                        }}
+                        fullWidth
+                      />
+                      <TextField
+                        label="Crianças"
+                        type="number"
+                        value={children}
+                        onChange={(e) => setChildren(e.target.value)}
+                        onBlur={() => setChildren(Math.max(0, Number(children) || 0))}
+                        slotProps={{
+                          htmlInput: {
+                            min: 0,
+                          },
+                        }}
+                        fullWidth
+                      />
+                    </FormGrid>
 
                     {/* Payment choice */}
                     <FormControl fullWidth>
@@ -806,118 +1094,144 @@ export default function EstablishmentDetailPage() {
                       </Select>
                     </FormControl>
 
-                    {/* Pricing Summary */}
-                    <Box sx={{ mt: 1, p: 2, borderRadius: 3, bgcolor: 'rgba(0, 151, 167, 0.04)', border: '1px solid rgba(0, 151, 167, 0.08)' }}>
+                    {/* Resumo de valores */}
+                    <Box
+                      sx={{
+                        p: 2,
+                        borderRadius: 2.5,
+                        bgcolor: 'action.hover',
+                        border: '1px solid',
+                        borderColor: 'divider',
+                      }}
+                    >
                       {isLoadingPrice || isLoadingAvailability ? (
-                        <Skeleton height={60} />
+                        <Skeleton height={64} />
                       ) : isDatesValid && selectedRoomId ? (
-                        <Box>
-                          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                            <Typography variant="body2" color="text.secondary">
-                              Diárias ({nights} {nights === 1 ? 'noite' : 'noites'}):
-                            </Typography>
-                            <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                              R$ {priceData ? priceData.toFixed(2) : '0.00'}
-                            </Typography>
-                          </Box>
-                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                              Valor Total:
-                            </Typography>
-                            <Typography variant="h6" color="primary.main" sx={{ fontWeight: 800 }}>
-                              R$ {priceData ? priceData.toFixed(2) : '0.00'}
-                            </Typography>
-                          </Box>
-                          {availabilityData && (
-                            <Box sx={{ mt: 1.5, display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                              {availabilityData.disponivel ? (
-                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: 'success.main' }}>
-                                  <CheckCircle fontSize="small" />
-                                  <Typography variant="caption" sx={{ fontWeight: 600 }}>
-                                    Disponível para reserva!
-                                  </Typography>
-                                </Box>
-                              ) : (
-                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: 'error.main' }}>
-                                  <Star fontSize="small" /> {/* Fallback icon */}
-                                  <Typography variant="caption" sx={{ fontWeight: 600 }}>
-                                    Quarto indisponível neste período.
-                                  </Typography>
-                                </Box>
-                              )}
-                            </Box>
-                          )}
+                        <Box sx={{ display: 'grid', gap: 1 }}>
+                          <InfoRow
+                            label={`Diárias (${nights} ${nights === 1 ? 'noite' : 'noites'})`}
+                            value={formatCurrency(priceData)}
+                          />
+                          <Divider />
+                          <InfoRow label="Valor total" value={formatCurrency(priceData)} emphasis />
+                          {availabilityData &&
+                            (availabilityData.disponivel ? (
+                              <Alert severity="success" sx={{ mt: 0.5 }}>
+                                Disponível para reserva!
+                              </Alert>
+                            ) : (
+                              <Alert severity="error" sx={{ mt: 0.5 }}>
+                                Quarto indisponível neste período.
+                              </Alert>
+                            ))}
                         </Box>
                       ) : (
-                        <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 1 }}>
+                        <Typography
+                          variant="body2"
+                          color="textSecondary"
+                          sx={{ textAlign: 'center', py: 1 }}
+                        >
                           Selecione o quarto e o período para simular valores e verificar disponibilidade.
                         </Typography>
                       )}
                     </Box>
 
-                    {/* Book submit button */}
-                    <Button
-                      type="submit"
-                      variant="contained"
-                      color="primary"
-                      size="large"
-                      disabled={isSubmitting || (isDatesValid && availabilityData && !availabilityData.disponivel)}
-                      fullWidth
-                      sx={{
-                        py: 1.5,
-                        borderRadius: 3,
-                        fontWeight: 700,
-                        fontSize: '1rem',
-                        boxShadow: 'none',
-                        '&:hover': {
-                          boxShadow: '0 4px 14px rgba(0,151,167,0.3)',
-                        },
-                      }}
-                    >
-                      {isSubmitting ? 'Solicitando...' : 'Solicitar Reserva'}
-                    </Button>
-                  </Box>
-                </form>
+                {/* Botão de reserva */}
+                <Button
+                  type="submit"
+                  variant="contained"
+                  color="primary"
+                  size="large"
+                  disabled={isSubmitting || (isDatesValid && availabilityData && !availabilityData.disponivel)}
+                  fullWidth
+                  aria-busy={isSubmitting}
+                >
+                  {isSubmitting ? 'Solicitando...' : 'Solicitar reserva'}
+                </Button>
+              </Box>
 
-                {/* Owner info */}
-                <Box sx={(t) => ({ mt: 3, p: 2, borderRadius: 3, bgcolor: t.palette.mode === 'dark' ? '#243044' : 'grey.50', border: '1px solid', borderColor: 'divider', overflow: 'hidden' })}>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1, fontWeight: 700, textTransform: 'uppercase' }}>
-                    Contato do Proprietário
-                  </Typography>
-                  <Typography variant="body2" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, mb: 0.5, minWidth: 0, overflowWrap: 'break-word' }}>
-                    <People sx={{ fontSize: 16, color: 'text.primary', flexShrink: 0 }} /> <Box component="span" sx={{ minWidth: 0 }}>{establishment.proprietario?.nome}</Box>
-                  </Typography>
-                  <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5, minWidth: 0, overflowWrap: 'break-word' }}>
-                    <Email sx={{ fontSize: 16, color: 'text.primary', flexShrink: 0 }} /> <Box component="span" sx={{ minWidth: 0 }}>{establishment.emailContato || establishment.proprietario?.email}</Box>
-                  </Typography>
-                  {establishment.contato && (
-                    <Typography variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0, overflowWrap: 'break-word' }}>
-                      <Phone sx={{ fontSize: 16, color: 'text.primary', flexShrink: 0 }} /> <Box component="span" sx={{ minWidth: 0 }}>{establishment.contato}</Box>
+              {/* Contato do proprietário */}
+              <Box sx={{ mt: 2.5, pt: 2.5, borderTop: '1px solid', borderColor: 'divider' }}>
+                <Typography
+                  variant="overline"
+                  component="p"
+                  color="textSecondary"
+                  sx={{ display: 'block', mb: 1 }}
+                >
+                  Contato do proprietário
+                </Typography>
+                <Box sx={{ display: 'grid', gap: 0.75 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, minWidth: 0 }}>
+                    <People
+                      aria-hidden
+                      sx={{ fontSize: 18, color: 'text.secondary', mt: 0.25, flexShrink: 0 }}
+                    />
+                    <Typography variant="body2" sx={{ fontWeight: 600, overflowWrap: 'anywhere', minWidth: 0 }}>
+                      {establishment.proprietario?.nome}
                     </Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, minWidth: 0 }}>
+                    <Email
+                      aria-hidden
+                      sx={{ fontSize: 18, color: 'text.secondary', mt: 0.25, flexShrink: 0 }}
+                    />
+                    <Typography variant="body2" sx={{ overflowWrap: 'anywhere', minWidth: 0 }}>
+                      {establishment.emailContato || establishment.proprietario?.email}
+                    </Typography>
+                  </Box>
+                  {establishment.contato && (
+                    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, minWidth: 0 }}>
+                      <Phone
+                        aria-hidden
+                        sx={{ fontSize: 18, color: 'text.secondary', mt: 0.25, flexShrink: 0 }}
+                      />
+                      <Typography variant="body2" sx={{ overflowWrap: 'anywhere', minWidth: 0 }}>
+                        {establishment.contato}
+                      </Typography>
+                    </Box>
                   )}
                 </Box>
-              </Paper>
-            </Box>
-          </Grid>
-        </Grid>
-      </Container>
+              </Box>
+            </SectionCard>
+          </Box>
+        </Box>
+      </Box>
 
-      {/* ================= ROOM PHOTO LIGHTBOX ================= */}
+      {/* ================= GALERIA DE FOTOS (LIGHTBOX) ================= */}
       <Dialog
         open={roomGalleryOpen}
         onClose={() => setRoomGalleryOpen(false)}
         maxWidth="lg"
         fullWidth
+        aria-label="Galeria de fotos"
         slotProps={{
           paper: {
-            sx: { borderRadius: 4, bgcolor: '#000', overflow: 'hidden' },
+            sx: { borderRadius: `${radius.lg}px`, bgcolor: 'common.black', overflow: 'hidden' },
           },
         }}
       >
-        <Box sx={{ position: 'relative', minHeight: 400, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Box
+          sx={{
+            position: 'relative',
+            minHeight: { xs: 280, sm: 400 },
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            p: { xs: 1, sm: 2 },
+          }}
+        >
           <IconButton
             onClick={() => setRoomGalleryOpen(false)}
-            sx={{ position: 'absolute', top: 8, right: 8, color: '#fff', zIndex: 10, bgcolor: 'rgba(0,0,0,0.5)', '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' } }}
+            aria-label="Fechar galeria"
+            sx={(t) => ({
+              position: 'absolute',
+              top: 8,
+              right: 8,
+              zIndex: 10,
+              color: t.palette.common.white,
+              bgcolor: alpha(t.palette.common.black, 0.5),
+              '&:hover': { bgcolor: alpha(t.palette.common.black, 0.72) },
+            })}
           >
             <Close />
           </IconButton>
@@ -925,42 +1239,70 @@ export default function EstablishmentDetailPage() {
           {roomGalleryPhotos.length > 1 && (
             <IconButton
               onClick={() => setRoomGalleryIndex((prev) => (prev === 0 ? roomGalleryPhotos.length - 1 : prev - 1))}
-              sx={{ position: 'absolute', left: 8, color: '#fff', zIndex: 10, bgcolor: 'rgba(0,0,0,0.5)', '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' } }}
+              aria-label="Foto anterior"
+              sx={(t) => ({
+                position: 'absolute',
+                left: 8,
+                zIndex: 10,
+                color: t.palette.common.white,
+                bgcolor: alpha(t.palette.common.black, 0.5),
+                '&:hover': { bgcolor: alpha(t.palette.common.black, 0.72) },
+              })}
             >
-              <ArrowBack />
+              <ChevronLeft />
             </IconButton>
           )}
 
           <Box
             component="img"
             src={roomGalleryPhotos[roomGalleryIndex]?.url}
-            alt="Foto do quarto"
-            sx={{ maxWidth: '100%', maxHeight: '85vh', objectFit: 'contain' }}
+            alt={`Foto ampliada ${roomGalleryIndex + 1} de ${roomGalleryPhotos.length}`}
+            sx={{ maxWidth: '100%', maxHeight: '80vh', objectFit: 'contain' }}
           />
 
           {roomGalleryPhotos.length > 1 && (
             <IconButton
               onClick={() => setRoomGalleryIndex((prev) => (prev === roomGalleryPhotos.length - 1 ? 0 : prev + 1))}
-              sx={{ position: 'absolute', right: 8, color: '#fff', zIndex: 10, bgcolor: 'rgba(0,0,0,0.5)', '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' } }}
+              aria-label="Próxima foto"
+              sx={(t) => ({
+                position: 'absolute',
+                right: 8,
+                zIndex: 10,
+                color: t.palette.common.white,
+                bgcolor: alpha(t.palette.common.black, 0.5),
+                '&:hover': { bgcolor: alpha(t.palette.common.black, 0.72) },
+              })}
             >
-              <ArrowBack sx={{ transform: 'rotate(180deg)' }} />
+              <ChevronRight />
             </IconButton>
           )}
 
           {roomGalleryPhotos.length > 1 && (
-            <Box sx={{ position: 'absolute', bottom: 16, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 1 }}>
+            <Box
+              sx={{
+                position: 'absolute',
+                bottom: 16,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                display: 'flex',
+                gap: 1,
+              }}
+            >
               {roomGalleryPhotos.map((_: any, idx: number) => (
-                <Box
+                <ButtonBase
                   key={idx}
                   onClick={() => setRoomGalleryIndex(idx)}
-                  sx={{
-                    width: 10,
-                    height: 10,
+                  aria-label={`Ir para foto ${idx + 1}`}
+                  sx={(t) => ({
+                    width: 12,
+                    height: 12,
                     borderRadius: '50%',
-                    bgcolor: idx === roomGalleryIndex ? '#fff' : 'rgba(255,255,255,0.4)',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s',
-                  }}
+                    bgcolor:
+                      idx === roomGalleryIndex
+                        ? t.palette.common.white
+                        : alpha(t.palette.common.white, 0.4),
+                    transition: 'background-color 120ms',
+                  })}
                 />
               ))}
             </Box>
@@ -968,7 +1310,7 @@ export default function EstablishmentDetailPage() {
         </Box>
       </Dialog>
 
-      {/* ================= SUCCESS CHECKOUT DIALOG ================= */}
+      {/* ================= DIÁLOGO DE SUCESSO DA RESERVA ================= */}
       <Dialog
         open={successDialogOpen}
         maxWidth="sm"
@@ -978,90 +1320,112 @@ export default function EstablishmentDetailPage() {
             setSuccessDialogOpen(false);
           }
         }}
+        aria-labelledby="reserva-sucesso-titulo"
         slotProps={{
           paper: {
-            sx: { borderRadius: 4, p: 2 },
+            sx: { borderRadius: `${radius.xxl}px` },
           },
         }}
       >
-        <DialogTitle sx={{ textAlign: 'center', pb: 1 }}>
+        <DialogTitle id="reserva-sucesso-titulo" sx={{ textAlign: 'center', pb: 1 }}>
           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5 }}>
             <Box
-              sx={{
-                width: 60,
-                height: 60,
+              aria-hidden
+              sx={(t) => ({
+                width: 56,
+                height: 56,
                 borderRadius: '50%',
-                bgcolor: 'success.light',
+                bgcolor: alpha(t.palette.success.main, 0.12),
                 color: 'success.main',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                boxShadow: '0 4px 12px rgba(76,175,80,0.2)',
-              }}
+              })}
             >
-              <CheckCircle sx={{ fontSize: 36 }} />
+              <CheckCircle sx={{ fontSize: 32 }} />
             </Box>
-            <Typography variant="h5" sx={{ fontWeight: 800, fontFamily: '"Outfit", sans-serif' }}>
-              Solicitação Efetuada!
+            <Typography variant="h5" component="span" sx={{ fontWeight: 700 }}>
+              Solicitação efetuada!
             </Typography>
           </Box>
         </DialogTitle>
         <DialogContent>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, mt: 1 }}>
-            <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center' }}>
+          <Box sx={{ display: 'grid', gap: 2.5, mt: 0.5 }}>
+            <Typography variant="body2" color="textSecondary" sx={{ textAlign: 'center' }}>
               Sua reserva no <strong>{establishment.nome}</strong> foi solicitada. O proprietário analisará seu pedido e você receberá atualizações em sua conta.
             </Typography>
 
             <Divider />
 
-            {/* Info details */}
-            <Grid container spacing={2}>
-              <Grid size={{ xs: 6 }}>
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                  CÓDIGO DA RESERVA
-                </Typography>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 700, fontFamily: 'monospace', fontSize: '1.05rem', color: 'primary.main' }}>
-                    {createdReservation?.codigoReserva}
-                  </Typography>
-                  <IconButton
-                    size="small"
-                    onClick={() => handleCopyText(createdReservation?.codigoReserva, 'Código de reserva')}
-                  >
-                    <ContentCopy sx={{ fontSize: 16 }} />
-                  </IconButton>
-                </Box>
-              </Grid>
-              <Grid size={{ xs: 6 }} sx={{ textAlign: 'right' }}>
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                  VALOR DA DIÁRIA
-                </Typography>
-                <Typography variant="subtitle1" sx={{ fontWeight: 800, color: 'text.primary' }}>
-                  R$ {createdReservation?.valorTotal ? Number(createdReservation.valorTotal).toFixed(2) : '0.00'}
-                </Typography>
-              </Grid>
-            </Grid>
+            <InfoGrid columns={2}>
+              <InfoItem
+                label="Código da reserva"
+                value={
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
+                    <Typography
+                      variant="subtitle2"
+                      sx={{
+                        fontWeight: 700,
+                        fontFamily: 'monospace',
+                        color: 'primary.main',
+                        overflowWrap: 'anywhere',
+                      }}
+                    >
+                      {createdReservation?.codigoReserva}
+                    </Typography>
+                    <IconButton
+                      size="small"
+                      onClick={() => handleCopyText(createdReservation?.codigoReserva, 'Código de reserva')}
+                      aria-label="Copiar código da reserva"
+                    >
+                      <ContentCopy sx={{ fontSize: 16 }} />
+                    </IconButton>
+                  </Box>
+                }
+              />
+              <InfoItem
+                label="Valor total"
+                emphasis
+                value={formatCurrency(createdReservation?.valorTotal)}
+              />
+            </InfoGrid>
 
-            <Alert severity="info" sx={{ borderRadius: 3 }}>
-              Status Atual: <strong>AGUARDANDO APROVAÇÃO</strong>.
+            <Alert severity="info">
+              Status atual: <strong>AGUARDANDO APROVAÇÃO</strong>.
             </Alert>
 
             {/* Simulated Payment details depending on selected method */}
             {!isMpEstabelecimento && paymentMethod === 'PIX' && pixData && (
-              <Box sx={{ p: 2, borderRadius: 3, border: '1px solid', borderColor: 'primary.light', bgcolor: 'rgba(0,151,167,0.02)' }}>
+              <Box
+                sx={{
+                  p: 2,
+                  borderRadius: 2.5,
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  bgcolor: 'action.hover',
+                }}
+              >
                 <Typography variant="subtitle2" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                  <AccountBalanceWallet sx={{ color: 'primary.main' }} /> Pagamento PIX (Simulado)
+                  <AccountBalanceWallet aria-hidden sx={{ color: 'primary.main' }} /> Pagamento PIX (Simulado)
                 </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
                   Copie a chave Pix abaixo e pague no app do seu banco. A aprovação da reserva ocorrerá após o proprietário conferir o comprovante.
                 </Typography>
 
                 <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <Box sx={{ bgcolor: 'white', p: 1, border: '1px solid rgba(0,0,0,0.08)', borderRadius: 2 }}>
-                    <img src={pixData.qrCode} alt="PIX QR Code" style={{ width: 110, height: 110 }} />
+                  <Box
+                    sx={{
+                      bgcolor: 'common.white',
+                      p: 1,
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      borderRadius: 2,
+                    }}
+                  >
+                    <img src={pixData.qrCode} alt="QR Code do Pix" style={{ width: 110, height: 110 }} />
                   </Box>
                   <Box sx={{ flex: 1, minWidth: 200 }}>
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                    <Typography variant="caption" color="textSecondary" sx={{ display: 'block' }}>
                       PIX COPIA E COLA
                     </Typography>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -1071,7 +1435,7 @@ export default function EstablishmentDetailPage() {
                         slotProps={{
                           input: {
                             readOnly: true,
-                            sx: { fontFamily: 'monospace', fontSize: '0.75rem', bgcolor: 'grey.50' },
+                            sx: { fontFamily: 'monospace', fontSize: '0.75rem', bgcolor: 'action.hover' },
                           },
                         }}
                         fullWidth
@@ -1091,11 +1455,19 @@ export default function EstablishmentDetailPage() {
             )}
 
             {!isMpEstabelecimento && paymentMethod === 'BOLETO' && (
-              <Box sx={{ p: 2, borderRadius: 3, border: '1px solid', borderColor: 'warning.light', bgcolor: 'rgba(255,112,67,0.02)' }}>
+              <Box
+                sx={{
+                  p: 2,
+                  borderRadius: 2.5,
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  bgcolor: 'action.hover',
+                }}
+              >
                 <Typography variant="subtitle2" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                  <Receipt sx={{ color: 'warning.main' }} /> Boleto Bancário (Simulado)
+                  <Receipt aria-hidden sx={{ color: 'warning.main' }} /> Boleto Bancário (Simulado)
                 </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
                   Copie a linha digitável do boleto para realizar o pagamento simulado:
                 </Typography>
 
@@ -1106,7 +1478,7 @@ export default function EstablishmentDetailPage() {
                     slotProps={{
                       input: {
                         readOnly: true,
-                        sx: { fontFamily: 'monospace', fontSize: '0.8rem', bgcolor: 'grey.50' },
+                        sx: { fontFamily: 'monospace', fontSize: '0.8rem', bgcolor: 'action.hover' },
                       },
                     }}
                     fullWidth
@@ -1125,13 +1497,21 @@ export default function EstablishmentDetailPage() {
             )}
 
             {!isMpEstabelecimento && paymentMethod === 'CARTAO' && (
-              <Box sx={(t) => ({ p: 2, borderRadius: 3, border: '1px solid', borderColor: 'divider', bgcolor: t.palette.mode === 'dark' ? '#1e293b' : 'grey.50' })}>
+              <Box
+                sx={{
+                  p: 2,
+                  borderRadius: 2.5,
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  bgcolor: 'action.hover',
+                }}
+              >
                 <Typography variant="subtitle2" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
-                  <CreditCard sx={{ color: 'text.secondary' }} /> Simulação de Cartão de Crédito
+                  <CreditCard aria-hidden sx={{ color: 'text.secondary' }} /> Simulação de Cartão de Crédito
                 </Typography>
 
                 {cardSimulated ? (
-                  <Alert severity="success" sx={{ borderRadius: 2 }}>
+                  <Alert severity="success">
                     Pagamento via cartão autorizado com sucesso!
                   </Alert>
                 ) : (
@@ -1152,62 +1532,94 @@ export default function EstablishmentDetailPage() {
                       onChange={(e) => setCardHolder(e.target.value.toUpperCase())}
                       fullWidth
                     />
-                    <Grid container spacing={1.5}>
-                      <Grid size={{ xs: 6 }}>
-                        <TextField
-                          label="Validade (MM/AA)"
-                          size="small"
-                          placeholder="12/29"
-                          value={cardExpiry}
-                          onChange={(e) => setCardExpiry(e.target.value.substring(0, 5))}
-                          fullWidth
-                        />
-                      </Grid>
-                      <Grid size={{ xs: 6 }}>
-                        <TextField
-                          label="CVV"
-                          size="small"
-                          placeholder="123"
-                          value={cardCvv}
-                          onChange={(e) => setCardCvv(e.target.value.replace(/\D/g, '').substring(0, 3))}
-                          fullWidth
-                        />
-                      </Grid>
-                    </Grid>
+                    <FormGrid columns={2}>
+                      <TextField
+                        label="Validade (MM/AA)"
+                        size="small"
+                        placeholder="12/29"
+                        value={cardExpiry}
+                        onChange={(e) => setCardExpiry(e.target.value.substring(0, 5))}
+                        fullWidth
+                      />
+                      <TextField
+                        label="CVV"
+                        size="small"
+                        placeholder="123"
+                        value={cardCvv}
+                        onChange={(e) => setCardCvv(e.target.value.replace(/\D/g, '').substring(0, 3))}
+                        fullWidth
+                      />
+                    </FormGrid>
                     <Button
                       variant="contained"
                       color="secondary"
                       size="small"
                       onClick={handleSimulateCreditCard}
-                      sx={{ mt: 1, fontWeight: 700 }}
                     >
-                      Simular Autorização de Cartão
+                      Simular autorização de cartão
                     </Button>
                   </Box>
                 )}
               </Box>
             )}
 
-            {isMpEstabelecimento && mpCheckout && (
-              <Box sx={{ p: 2, borderRadius: 3, border: '1px solid', borderColor: 'primary.light', bgcolor: 'rgba(0,151,167,0.03)' }}>
+            {isMpEstabelecimento && !mpCheckout && (
+              <Box
+                sx={{
+                  p: 2,
+                  borderRadius: 2.5,
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  bgcolor: 'action.hover',
+                }}
+              >
                 <Typography variant="subtitle2" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                  <AccountBalanceWallet sx={{ color: 'primary.main' }} /> Pagamento via Mercado Pago
+                  <AccountBalanceWallet aria-hidden sx={{ color: 'primary.main' }} /> Pagamento via Mercado Pago
                 </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                <Typography variant="body2" color="textSecondary">
+                  Sua solicitação foi enviada. Assim que o estabelecimento confirmar a reserva, o pagamento
+                  (PIX, boleto ou cartão) ficará disponível em <strong>Minhas Reservas</strong>, no ambiente do
+                  Mercado Pago. O reconhecimento é automático — não é necessário enviar comprovante.
+                </Typography>
+              </Box>
+            )}
+
+            {isMpEstabelecimento && mpCheckout && (
+              <Box
+                sx={{
+                  p: 2,
+                  borderRadius: 2.5,
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  bgcolor: 'action.hover',
+                }}
+              >
+                <Typography variant="subtitle2" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                  <AccountBalanceWallet aria-hidden sx={{ color: 'primary.main' }} /> Pagamento via Mercado Pago
+                </Typography>
+                <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
                   O pagamento é confirmado automaticamente pela plataforma assim que compensado — não é necessário enviar comprovante.
                 </Typography>
 
                 {paymentMethod === 'PIX' && (
                   <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
-                    <Box sx={{ bgcolor: 'white', p: 1, border: '1px solid rgba(0,0,0,0.08)', borderRadius: 2 }}>
+                    <Box
+                      sx={{
+                        bgcolor: 'common.white',
+                        p: 1,
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        borderRadius: 2,
+                      }}
+                    >
                       <img
                         src={mpCheckout.checkout.qrCodeBase64?.startsWith('data:') ? mpCheckout.checkout.qrCodeBase64 : `data:image/png;base64,${mpCheckout.checkout.qrCodeBase64}`}
-                        alt="PIX QR Code"
+                        alt="QR Code do Pix"
                         style={{ width: 140, height: 140 }}
                       />
                     </Box>
                     <Box sx={{ flex: 1, minWidth: 200 }}>
-                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                      <Typography variant="caption" color="textSecondary" sx={{ display: 'block' }}>
                         PIX COPIA E COLA
                       </Typography>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -1217,7 +1629,7 @@ export default function EstablishmentDetailPage() {
                           slotProps={{
                             input: {
                               readOnly: true,
-                              sx: { fontFamily: 'monospace', fontSize: '0.75rem', bgcolor: 'grey.50' },
+                              sx: { fontFamily: 'monospace', fontSize: '0.75rem', bgcolor: 'action.hover' },
                             },
                           }}
                           fullWidth
@@ -1243,7 +1655,7 @@ export default function EstablishmentDetailPage() {
                       slotProps={{
                         input: {
                           readOnly: true,
-                          sx: { fontFamily: 'monospace', fontSize: '0.8rem', bgcolor: 'grey.50' },
+                          sx: { fontFamily: 'monospace', fontSize: '0.8rem', bgcolor: 'action.hover' },
                         },
                       }}
                       fullWidth
@@ -1286,9 +1698,8 @@ export default function EstablishmentDetailPage() {
                 size="large"
                 fullWidth
                 onClick={handleOpenMpCheckout}
-                sx={{ py: 1.5, borderRadius: 3, fontWeight: 700 }}
               >
-                Pagar com Cartão via Mercado Pago
+                Pagar com cartão via Mercado Pago
               </Button>
             )}
 
@@ -1298,13 +1709,12 @@ export default function EstablishmentDetailPage() {
               size="large"
               fullWidth
               onClick={() => navigate('/hospede/reservas')}
-              sx={{ py: 1.5, borderRadius: 3, fontWeight: 700, mt: 1 }}
             >
-              Ir para Minhas Reservas
+              Ir para minhas reservas
             </Button>
           </Box>
         </DialogContent>
       </Dialog>
-    </Box>
+    </PageContainer>
   );
 }

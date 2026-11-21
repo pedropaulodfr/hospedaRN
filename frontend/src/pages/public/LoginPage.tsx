@@ -1,12 +1,11 @@
 import { useState } from 'react';
-import { useNavigate, Link, useSearchParams } from 'react-router-dom';
+import { useNavigate, Link as RouterLink, useSearchParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import {
   Box,
   Typography,
-  Container,
   Button,
   TextField,
   Card,
@@ -14,10 +13,22 @@ import {
   IconButton,
   InputAdornment,
   CircularProgress,
+  Divider,
+  Link,
+  Stack,
+  alpha,
 } from '@mui/material';
-import { Visibility, VisibilityOff, BeachAccess, Email, Lock } from '@mui/icons-material';
+import {
+  Visibility,
+  VisibilityOff,
+  Email,
+  Lock,
+  CheckCircleOutlined,
+} from '@mui/icons-material';
 import { authApi } from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
+import { Logo } from '../../components/common';
+import { layout } from '../../theme/tokens';
 import toast from 'react-hot-toast';
 
 const loginSchema = z.object({
@@ -26,6 +37,13 @@ const loginSchema = z.object({
 });
 
 type LoginFormData = z.infer<typeof loginSchema>;
+
+/** Destaques da marca exibidos no painel lateral (fatos do produto, sem métricas inventadas). */
+const brandHighlights = [
+  'Pousadas, hotéis e chalés em todo o Rio Grande do Norte',
+  'Solicite a reserva e acompanhe a aprovação pelo painel',
+  'Pagamento por Pix, boleto ou cartão',
+];
 
 export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
@@ -63,7 +81,7 @@ export default function LoginPage() {
       // Update Zustand auth store
       setAuth(user, accessToken, refreshToken);
 
-      toast.success(`Bem-vindo de volta, ${user.nome}! 👋`);
+      toast.success(`Bem-vindo de volta, ${user.nome}!`);
 
       // Redirect based on role
       if (user.role === 'ADMIN') {
@@ -83,132 +101,227 @@ export default function LoginPage() {
   };
 
   return (
-    <Container maxWidth="xs" sx={{ py: 12 }}>
-      <Card sx={{ borderRadius: 4, boxShadow: '0 8px 32px rgba(0,0,0,0.08)' }}>
-        <CardContent sx={{ p: 4 }}>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'center', mb: 3 }}>
-            <Box
-              sx={{
-                width: 48,
-                height: 48,
-                borderRadius: '14px',
-                background: 'linear-gradient(135deg, #0097A7, #FF7043)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <BeachAccess sx={{ color: 'white', fontSize: 28 }} />
-            </Box>
-            <Box sx={{ textAlign: 'center' }}>
-              <Typography variant="h4" sx={{ fontWeight: 800, fontFamily: '"Outfit", sans-serif' }}>
-                Entrar
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                Acesse sua conta do HospedaRN
-              </Typography>
-            </Box>
+    <Box
+      sx={{
+        display: 'grid',
+        gridTemplateColumns: { xs: 'minmax(0, 1fr)', lg: 'minmax(0, 1fr) minmax(0, 1fr)' },
+        minHeight: { lg: `calc(100vh - ${layout.appBar}px)` },
+        bgcolor: 'background.default',
+      }}
+    >
+      {/* ================= PAINEL DE MARCA (desktop) ================= */}
+      <Box
+        component="aside"
+        aria-label="Sobre o HospedaRN"
+        sx={{
+          display: { xs: 'none', lg: 'flex' },
+          flexDirection: 'column',
+          justifyContent: 'space-between',
+          gap: 6,
+          bgcolor: 'primary.dark',
+          color: 'primary.contrastText',
+          position: 'relative',
+          overflow: 'hidden',
+          p: { lg: 6, xl: 8 },
+        }}
+      >
+        {/* Textura sutil: dois círculos em `alpha`, sem gradiente nem hex. */}
+        <Box
+          aria-hidden
+          sx={(t) => ({
+            position: 'absolute',
+            width: 380,
+            height: 380,
+            borderRadius: '50%',
+            top: -140,
+            right: -120,
+            border: `1px solid ${alpha(t.palette.primary.contrastText, 0.16)}`,
+            bgcolor: alpha(t.palette.primary.contrastText, 0.04),
+            pointerEvents: 'none',
+          })}
+        />
+        <Box
+          aria-hidden
+          sx={(t) => ({
+            position: 'absolute',
+            width: 240,
+            height: 240,
+            borderRadius: '50%',
+            bottom: -90,
+            left: -60,
+            border: `1px solid ${alpha(t.palette.primary.contrastText, 0.12)}`,
+            pointerEvents: 'none',
+          })}
+        />
+
+        <Box sx={{ position: 'relative' }}>
+          <Logo size={40} onDark to="/" />
+        </Box>
+
+        <Box sx={{ position: 'relative' }}>
+          <Typography
+            variant="overline"
+            component="p"
+            sx={{ color: 'inherit', opacity: 0.72, mb: 1.5 }}
+          >
+            Hospedagens no Rio Grande do Norte
+          </Typography>
+          <Typography
+            variant="h3"
+            component="p"
+            sx={{ color: 'inherit', maxWidth: 460, letterSpacing: '-0.02em' }}
+          >
+            Seu próximo litoral começa com uma boa reserva.
+          </Typography>
+          <Typography
+            variant="body1"
+            sx={{ color: 'inherit', opacity: 0.82, mt: 2.5, maxWidth: 420 }}
+          >
+            Encontre onde ficar e acompanhe cada solicitação em um só lugar.
+          </Typography>
+
+          <Stack spacing={1.5} sx={{ mt: 4 }}>
+            {brandHighlights.map((highlight) => (
+              <Stack key={highlight} direction="row" spacing={1.5} sx={{ alignItems: 'flex-start' }}>
+                <CheckCircleOutlined
+                  aria-hidden
+                  sx={{ fontSize: 20, color: 'inherit', opacity: 0.85, mt: 0.25, flexShrink: 0 }}
+                />
+                <Typography variant="body2" sx={{ color: 'inherit', opacity: 0.88 }}>
+                  {highlight}
+                </Typography>
+              </Stack>
+            ))}
+          </Stack>
+        </Box>
+
+        <Typography variant="caption" sx={{ color: 'inherit', opacity: 0.6, position: 'relative' }}>
+          Rio Grande do Norte · Brasil
+        </Typography>
+      </Box>
+
+      {/* ================= FORMULÁRIO ================= */}
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          px: { xs: 2, sm: 4 },
+          py: { xs: 4, md: 6, lg: 8 },
+        }}
+      >
+        <Box sx={{ width: '100%', maxWidth: 440 }}>
+          {/* Marca no topo (mobile/tablet) */}
+          <Box sx={{ display: { xs: 'flex', lg: 'none' }, justifyContent: 'center', mb: 3 }}>
+            <Logo size={38} to="/" />
           </Box>
 
-          <form onSubmit={handleSubmit(onSubmit)}>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
-              <TextField
-                {...register('email')}
-                label="E-mail"
-                variant="outlined"
-                fullWidth
-                error={!!errors.email}
-                helperText={errors.email?.message}
-                slotProps={{
-                  input: {
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <Email sx={{ color: 'text.secondary', fontSize: 20 }} />
-                      </InputAdornment>
-                    ),
-                  },
-                }}
-              />
-
-              <TextField
-                {...register('senha')}
-                label="Senha"
-                type={showPassword ? 'text' : 'password'}
-                variant="outlined"
-                fullWidth
-                error={!!errors.senha}
-                helperText={errors.senha?.message}
-                slotProps={{
-                  input: {
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <Lock sx={{ color: 'text.secondary', fontSize: 20 }} />
-                      </InputAdornment>
-                    ),
-                    endAdornment: (
-                      <InputAdornment position="end">
-                        <IconButton onClick={() => setShowPassword(!showPassword)} edge="end">
-                          {showPassword ? <VisibilityOff /> : <Visibility />}
-                        </IconButton>
-                      </InputAdornment>
-                    ),
-                  },
-                }}
-              />
-
-              <Box sx={{ textAlign: 'right', mt: -1 }}>
-                <Link
-                  to="/recuperar-senha"
-                  style={{
-                    textDecoration: 'none',
-                    fontSize: '0.85rem',
-                    fontWeight: 600,
-                    color: '#0097A7',
-                  }}
-                >
-                  Esqueceu a senha?
-                </Link>
+          <Card>
+            <CardContent sx={{ p: { xs: 3, sm: 4 } }}>
+              <Box sx={{ mb: 3 }}>
+                <Typography variant="overline" component="p" color="primary">
+                  Acessar conta
+                </Typography>
+                <Typography variant="h4" component="h1" sx={{ mt: 0.5 }}>
+                  Entrar
+                </Typography>
+                <Typography variant="body2" color="textSecondary" sx={{ mt: 1 }}>
+                  Informe seu e-mail e senha para acessar o HospedaRN.
+                </Typography>
               </Box>
 
-              <Button
-                type="submit"
-                variant="contained"
-                color="primary"
-                fullWidth
-                disabled={loading}
-                sx={{
-                  py: 1.5,
-                  borderRadius: 2.5,
-                  fontWeight: 700,
-                  fontSize: '1rem',
-                  boxShadow: 'none',
-                  '&:hover': {
-                    boxShadow: '0 4px 12px rgba(0, 151, 167, 0.25)',
-                  },
-                }}
+              <Box
+                component="form"
+                noValidate
+                onSubmit={handleSubmit(onSubmit)}
+                sx={{ display: 'grid', gap: 2.5 }}
               >
-                {loading ? <CircularProgress size={24} color="inherit" /> : 'Entrar'}
-              </Button>
-            </Box>
-          </form>
+                <TextField
+                  id="login-email"
+                  {...register('email')}
+                  label="E-mail"
+                  type="email"
+                  autoComplete="email"
+                  variant="outlined"
+                  fullWidth
+                  autoFocus
+                  error={!!errors.email}
+                  helperText={errors.email?.message}
+                  slotProps={{
+                    input: {
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <Email aria-hidden sx={{ color: 'text.secondary', fontSize: 20 }} />
+                        </InputAdornment>
+                      ),
+                    },
+                  }}
+                />
 
-          <Box sx={{ textAlign: 'center', mt: 3 }}>
-            <Typography variant="body2" color="text.secondary">
-              Não tem uma conta?{' '}
-              <Link
-                to="/cadastro"
-                style={{
-                  textDecoration: 'none',
-                  fontWeight: 600,
-                  color: '#0097A7',
-                }}
-              >
-                Cadastre-se
-              </Link>
-            </Typography>
-          </Box>
-        </CardContent>
-      </Card>
-    </Container>
+                <Box>
+                  <TextField
+                    id="login-senha"
+                    {...register('senha')}
+                    label="Senha"
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete="current-password"
+                    variant="outlined"
+                    fullWidth
+                    error={!!errors.senha}
+                    helperText={errors.senha?.message}
+                    slotProps={{
+                      input: {
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <Lock aria-hidden sx={{ color: 'text.secondary', fontSize: 20 }} />
+                          </InputAdornment>
+                        ),
+                        endAdornment: (
+                          <InputAdornment position="end">
+                            <IconButton
+                              onClick={() => setShowPassword(!showPassword)}
+                              edge="end"
+                              aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                            >
+                              {showPassword ? <VisibilityOff /> : <Visibility />}
+                            </IconButton>
+                          </InputAdornment>
+                        ),
+                      },
+                    }}
+                  />
+                  <Box sx={{ textAlign: 'right', mt: 1 }}>
+                    <Link component={RouterLink} to="/recuperar-senha" variant="body2" sx={{ fontWeight: 600 }}>
+                      Esqueceu a senha?
+                    </Link>
+                  </Box>
+                </Box>
+
+                <Button
+                  type="submit"
+                  variant="contained"
+                  color="primary"
+                  size="large"
+                  fullWidth
+                  disabled={loading}
+                  aria-busy={loading}
+                >
+                  {loading ? <CircularProgress size={24} color="inherit" /> : 'Entrar'}
+                </Button>
+              </Box>
+
+              <Divider sx={{ my: 3 }} />
+
+              <Typography variant="body2" color="textSecondary" sx={{ textAlign: 'center' }}>
+                Não tem uma conta?{' '}
+                <Link component={RouterLink} to="/cadastro" variant="body2" sx={{ fontWeight: 600 }}>
+                  Criar conta
+                </Link>
+              </Typography>
+            </CardContent>
+          </Card>
+        </Box>
+      </Box>
+    </Box>
   );
 }

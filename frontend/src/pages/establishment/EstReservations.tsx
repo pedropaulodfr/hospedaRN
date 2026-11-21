@@ -1,54 +1,72 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
+  Avatar,
   Box,
-  Typography,
-  Paper,
   Button,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  FormControl,
   Grid,
+  IconButton,
+  InputLabel,
+  MenuItem,
+  Select,
+  Stack,
+  Tab,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
-  TableRow,
   TablePagination,
-  IconButton,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  DialogContentText,
-  TextField,
-  CircularProgress,
-  Tooltip,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  Chip,
-  Tab,
+  TableRow,
   Tabs,
-  Avatar,
-  Divider,
-  Alert,
+  TextField,
+  Tooltip,
+  Typography,
 } from '@mui/material';
 import {
-  Check,
-  Close,
-  Visibility,
-  CalendarMonth,
   AttachMoney,
-  People,
-  Info,
-  PictureAsPdf,
-  OpenInNew,
-  WarningAmber,
-  Phone,
-  Email,
-  Timer,
+  CalendarMonth,
   CancelOutlined,
+  Check,
   CheckCircleOutlined,
+  Close,
+  Email,
+  Hotel,
+  OpenInNew,
+  Phone,
+  PictureAsPdf,
+  Receipt,
+  Refresh,
+  Timer,
+  Visibility,
 } from '@mui/icons-material';
+import {
+  ConfirmDialog,
+  DataToolbar,
+  DataToolbarGroup,
+  EmptySearchIcon,
+  EmptyState,
+  ErrorState,
+  FormError,
+  InfoGrid,
+  InfoItem,
+  InlineLoading,
+  ModoPagamentoChip,
+  PageContainer,
+  PageHeader,
+  SearchField,
+  SectionCard,
+  StatCard,
+  StatusChip,
+  TableSkeleton,
+} from '../../components/common';
+import { formatCurrency, formatDate, radius } from '../../theme/tokens';
 import { establishmentsApi, reservationsApi, paymentsApi, reportsApi } from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
 import toast from 'react-hot-toast';
@@ -97,6 +115,8 @@ interface Reservation {
   criancas: number;
   valorTotal: number | string;
   status: 'SOLICITADA' | 'CONFIRMADA' | 'AGUARDANDO_PAGAMENTO' | 'FINALIZADA' | 'CANCELADA';
+  /** Snapshot do modo de pagamento no momento da criação da reserva */
+  modoPagamento?: 'PADRAO' | 'MERCADO_PAGO';
   observacoes?: string;
   cancelamentoMotivo?: string;
   criadoEm: string;
@@ -105,13 +125,31 @@ interface Reservation {
   pagamento?: Payment | null;
 }
 
-const statusMap = {
-  SOLICITADA: { label: 'Solicitada', color: 'info' as const, bg: 'rgba(2, 136, 209, 0.08)', text: '#0288d1' },
-  CONFIRMADA: { label: 'Confirmada / Ag. Pagto', color: 'warning' as const, bg: 'rgba(237, 108, 2, 0.08)', text: '#ed6c02' },
-  AGUARDANDO_PAGAMENTO: { label: 'Aguardando Pagamento', color: 'warning' as const, bg: 'rgba(237, 108, 2, 0.08)', text: '#ed6c02' },
-  FINALIZADA: { label: 'Finalizada', color: 'success' as const, bg: 'rgba(46, 125, 50, 0.08)', text: '#2e7d32' },
-  CANCELADA: { label: 'Cancelada', color: 'error' as const, bg: 'rgba(211, 47, 47, 0.08)', text: '#d32f2f' },
+/** Rótulos de status de pagamento (o backend usa CONFIRMADO, o design system APROVADO). */
+const PAYMENT_STATUS_LABEL: Record<string, string> = {
+  PENDENTE: 'Pendente',
+  CONFIRMADO: 'Confirmado',
+  ESTORNADO: 'Estornado',
+  CANCELADO: 'Cancelado',
+  EM_ANALISE: 'Em análise',
+  PROCESSANDO: 'Processando',
 };
+
+/** Rótulos amigáveis da forma de pagamento escolhida pelo hóspede. */
+const PAYMENT_METHOD_LABEL: Record<string, string> = {
+  PIX: 'Pix',
+  CARTAO: 'Cartão de crédito',
+  BOLETO: 'Boleto bancário',
+};
+
+const paymentMethodLabel = (metodo?: string | null) =>
+  metodo ? (PAYMENT_METHOD_LABEL[metodo] ?? metodo) : 'Ainda não escolhida';
+
+/** Mapeia o status de pagamento para o tom semântico do design system. */
+const paymentChipStatus = (status: string) => (status === 'CONFIRMADO' ? 'APROVADO' : status);
+
+const nightsBetween = (checkIn: string, checkOut: string) =>
+  dayjs(checkOut).diff(dayjs(checkIn), 'day');
 
 export default function EstReservations() {
   const { user } = useAuthStore();
@@ -121,7 +159,8 @@ export default function EstReservations() {
   // Reservation list states
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [loading, setLoading] = useState(true);
-  const [listLoading, setListLoading] = useState(false);
+  const [listLoading, setListLoading] = useState(true);
+  const [listError, setListError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
 
   // Pagination states
@@ -131,9 +170,21 @@ export default function EstReservations() {
 
   // Filter state
   const [activeTab, setActiveTab] = useState(0); // 0: Solicitadas, 1: Aguardando Pagamento, 2: Finalizadas, 3: Canceladas, 4: Todas
+  const [search, setSearch] = useState('');
+
+  // Filtro por data (opcional). Padrão: sem filtro, lista todas as reservas.
+  const [dataInicio, setDataInicio] = useState('');
+  const [dataFim, setDataFim] = useState('');
+  const [campoData, setCampoData] = useState<'estadia' | 'solicitacao'>('estadia');
 
   // Dashboard stats (independent of active tab)
-  const [stats, setStats] = useState({ pendingCount: 0, awaitingPaymentCount: 0, finalizedCount: 0, totalRevenue: '0.00' });
+  const [stats, setStats] = useState({
+    pendingCount: 0,
+    awaitingPaymentCount: 0,
+    finalizedCount: 0,
+    totalRevenue: '0.00',
+  });
+  const [statsLoaded, setStatsLoaded] = useState(false);
 
   // Details Dialog
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -145,6 +196,13 @@ export default function EstReservations() {
   const [cancelOpen, setCancelOpen] = useState(false);
   const [reservationToCancel, setReservationToCancel] = useState<Reservation | null>(null);
   const [cancelReason, setCancelReason] = useState('');
+  const [cancelError, setCancelError] = useState(false);
+
+  // Confirm / Finalize Dialogs
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [reservationToConfirm, setReservationToConfirm] = useState<Reservation | null>(null);
+  const [finalizeOpen, setFinalizeOpen] = useState(false);
+  const [reservationToFinalize, setReservationToFinalize] = useState<Reservation | null>(null);
 
   // Load initial data
   useEffect(() => {
@@ -196,6 +254,7 @@ export default function EstReservations() {
     if (!selectedEstablishment) return;
     try {
       setListLoading(true);
+      setListError(null);
 
       // Map active tab to status filter
       let statusFilter: string | undefined;
@@ -204,21 +263,9 @@ export default function EstReservations() {
           statusFilter = 'SOLICITADA';
           break;
         case 1:
-          // In backend, "Aguardando Pagamento" could be represented by CONFIRMADA or AGUARDANDO_PAGAMENTO
-          // We'll fetch all and filter in frontend or request specifically. Let's see:
-          // The API takes a single status. We will query CONFIRMADA first.
-          // Wait, to handle CONFIRMADA and AGUARDANDO_PAGAMENTO together:
-          // We can fetch all and filter on frontend, or if pagination is needed, query both.
-          // Since we query by activeTab, let's fetch based on tab.
-          // We will fetch CONFIRMADA for Tab 1, but wait!
-          // If the guest pays, the status changes to AGUARDANDO_PAGAMENTO.
-          // Let's fetch all and filter them in the client if we want to combine, or fetch specifically.
-          // Let's fetch all (no status filter) if tab is 'All' or 'Aguardando Pagamento' and filter on client to ensure we don't miss anything,
-          // or we can handle it dynamically. Let's fetch all if tab is 1 and filter locally, or request without status and filter.
-          // Wait, if there are many reservations, local filtering on a single page of 'all' is fine.
-          // Let's check how many total records there are. Usually small for local test.
-          // Let's query without status filter if tab is 1 or 4, and filter locally. That is extremely robust!
-          statusFilter = undefined; 
+          // "Aguardando pagamento" agrupa CONFIRMADA e AGUARDANDO_PAGAMENTO: a API
+          // aceita um único status, então busca sem filtro e refina no cliente.
+          statusFilter = undefined;
           break;
         case 2:
           statusFilter = 'FINALIZADA';
@@ -235,6 +282,9 @@ export default function EstReservations() {
       const res = await reservationsApi.getAll({
         estabelecimentoId: selectedEstablishment.id,
         status: statusFilter,
+        dataInicio: dataInicio || undefined,
+        dataFim: dataFim || undefined,
+        campoData: dataInicio || dataFim ? campoData : undefined,
         page: page + 1, // backend is 1-indexed
         limit: rowsPerPage,
       });
@@ -245,7 +295,7 @@ export default function EstReservations() {
       // Filter locally for Tab 1 (Aguardando Pagamento: should be CONFIRMADA or AGUARDANDO_PAGAMENTO)
       if (activeTab === 1) {
         const filtered = resData.filter(
-          (r: Reservation) => r.status === 'CONFIRMADA' || r.status === 'AGUARDANDO_PAGAMENTO'
+          (r: Reservation) => r.status === 'CONFIRMADA' || r.status === 'AGUARDANDO_PAGAMENTO',
         );
         setReservations(filtered);
         setTotalCount(filtered.length);
@@ -254,8 +304,11 @@ export default function EstReservations() {
         setTotalCount(total);
       }
       fetchStats();
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
+      setListError(
+        error.response?.data?.message || 'Não foi possível carregar as reservas. Tente novamente.',
+      );
       toast.error('Erro ao buscar reservas');
     } finally {
       setListLoading(false);
@@ -266,7 +319,8 @@ export default function EstReservations() {
     if (!selectedEstablishment) return;
     try {
       const res = await reportsApi.byStatus(selectedEstablishment.id);
-      const data: { status: string; _count: { id: number }; _sum: { valorTotal: string | number } }[] = res.data.data || res.data || [];
+      const data: { status: string; _count: { id: number }; _sum: { valorTotal: string | number } }[] =
+        res.data.data || res.data || [];
       const pendingCount = data.find((d) => d.status === 'SOLICITADA')?._count?.id ?? 0;
       const awaitingPaymentCount =
         (data.find((d) => d.status === 'CONFIRMADA')?._count?.id ?? 0) +
@@ -279,6 +333,8 @@ export default function EstReservations() {
       setStats({ pendingCount, awaitingPaymentCount, finalizedCount, totalRevenue });
     } catch (error) {
       console.error('Erro ao carregar indicadores', error);
+    } finally {
+      setStatsLoaded(true);
     }
   };
 
@@ -286,12 +342,13 @@ export default function EstReservations() {
     if (selectedEstablishment) {
       fetchReservations();
     }
-  }, [selectedEstablishment, page, rowsPerPage, activeTab]);
+  }, [selectedEstablishment, page, rowsPerPage, activeTab, dataInicio, dataFim, campoData]);
 
   const handleEstablishmentChange = (estId: string) => {
     const est = establishments.find((e) => e.id === estId) || null;
     setSelectedEstablishment(est);
     setPage(0);
+    setSearch('');
   };
 
   const handleChangePage = (_: any, newPage: number) => {
@@ -308,13 +365,29 @@ export default function EstReservations() {
     try {
       setActionLoading(true);
       await reservationsApi.confirm(reservationId);
-      toast.success('Reserva confirmada! Hóspede notificado para realizar o pagamento.');
+      toast.success('Reserva confirmada. Hóspede notificado para realizar o pagamento.');
       fetchReservations();
+      return true;
     } catch (error: any) {
       console.error(error);
       toast.error(error.response?.data?.message || 'Erro ao confirmar reserva');
+      return false;
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  const handleRequestConfirm = (reservation: Reservation) => {
+    setReservationToConfirm(reservation);
+    setConfirmOpen(true);
+  };
+
+  const handleSubmitConfirm = async () => {
+    if (!reservationToConfirm) return;
+    const ok = await handleConfirmReservation(reservationToConfirm.id);
+    if (ok) {
+      setConfirmOpen(false);
+      setReservationToConfirm(null);
     }
   };
 
@@ -322,12 +395,18 @@ export default function EstReservations() {
   const handleOpenCancel = (reservation: Reservation) => {
     setReservationToCancel(reservation);
     setCancelReason('');
+    setCancelError(false);
     setCancelOpen(true);
   };
 
   // Confirm cancel reservation
   const handleConfirmCancel = async () => {
     if (!reservationToCancel) return;
+    // O motivo é obrigatório na interface — mantém a regra anterior (botão desabilitado).
+    if (!cancelReason.trim()) {
+      setCancelError(true);
+      return;
+    }
     try {
       setActionLoading(true);
       await reservationsApi.cancel(reservationToCancel.id, { motivo: cancelReason });
@@ -376,355 +455,333 @@ export default function EstReservations() {
 
       // Finalize the reservation
       await reservationsApi.finalize(reserva.id);
-      
-      toast.success('Pagamento confirmado e reserva finalizada com sucesso! 🎉');
+
+      toast.success('Pagamento confirmado e reserva finalizada com sucesso.');
       setDetailsOpen(false);
       fetchReservations();
+      return true;
     } catch (error: any) {
       console.error(error);
       toast.error(error.response?.data?.message || 'Erro ao confirmar pagamento');
+      return false;
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  const handleRequestFinalize = () => {
+    if (!selectedReservation) return;
+    setReservationToFinalize(selectedReservation);
+    setDetailsOpen(false);
+    setFinalizeOpen(true);
+  };
+
+  const handleSubmitFinalize = async () => {
+    if (!reservationToFinalize) return;
+    const ok = await handleConfirmPayment(reservationToFinalize);
+    if (ok) {
+      setFinalizeOpen(false);
+      setReservationToFinalize(null);
     }
   };
 
   // Dashboard stats computed from /reports/reservas/by-status (independent of active tab)
   const { pendingCount, awaitingPaymentCount, finalizedCount, totalRevenue } = stats;
 
-  const isMpEstabelecimento = selectedEstablishment?.modoPagamento === 'MERCADO_PAGO';
+  const isMpEstabelecimento =
+    (selectedReservation?.modoPagamento ?? selectedEstablishment?.modoPagamento) === 'MERCADO_PAGO';
 
-  return (
-    <Box sx={{ p: 4, maxWidth: 1200, margin: '0 auto' }}>
-      {/* Header Section */}
-      <Box sx={{ mb: 4, display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 2 }}>
-        <Box>
-          <Typography variant="h4" sx={{ fontFamily: '"Outfit", sans-serif', fontWeight: 800, mb: 0.5 }}>
-            Gerenciar Reservas
-          </Typography>
-          <Typography variant="body1" color="text.secondary">
-            Visualize as solicitações de reserva de hóspedes, gerencie confirmações e aprove comprovantes de pagamentos.
-          </Typography>
-        </Box>
+  /** Busca restrita aos registros já carregados (a API de reservas não expõe parâmetro de busca). */
+  const visibleReservations = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (!term) return reservations;
+    return reservations.filter((reserva) =>
+      [reserva.codigoReserva, reserva.hospede?.nome, reserva.hospede?.email, reserva.quarto?.nome]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(term),
+    );
+  }, [reservations, search]);
 
-        {establishments.length > 1 && (
-          <FormControl size="small" sx={{ minWidth: 220 }}>
-            <InputLabel id="est-select-label">Estabelecimento</InputLabel>
-            <Select
-              labelId="est-select-label"
-              value={selectedEstablishment?.id || ''}
-              label="Estabelecimento"
-              onChange={(e) => handleEstablishmentChange(e.target.value)}
-              sx={{ borderRadius: '10px' }}
+  const detailsNights = selectedReservation
+    ? nightsBetween(selectedReservation.checkIn, selectedReservation.checkOut)
+    : 0;
+
+  /** Ações por status — mesma matriz de permissões da versão anterior. */
+  const renderReservationActions = (reserva: Reservation) => (
+    <Stack
+      direction="row"
+      spacing={0.5}
+      sx={{ justifyContent: { xs: 'flex-end', sm: 'center' }, flexWrap: 'nowrap' }}
+    >
+      {reserva.status === 'SOLICITADA' && (
+        <>
+          <Tooltip title="Confirmar reserva">
+            <IconButton
+              onClick={() => handleRequestConfirm(reserva)}
+              color="success"
+              size="small"
+              disabled={actionLoading}
+              aria-label={`Confirmar reserva ${reserva.codigoReserva}`}
             >
-              {establishments.map((est) => (
-                <MenuItem key={est.id} value={est.id}>
-                  {est.nome}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        )}
-      </Box>
-
-      {/* Quick Stats Panel */}
-      {selectedEstablishment && (
-        <Grid container spacing={3} sx={{ mb: 4 }}>
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-            <Paper
-              sx={{
-                p: 2.5,
-                borderRadius: '16px',
-                border: '1px solid',
-                borderColor: 'divider',
-                boxShadow: '0 4px 20px 0 rgba(0,0,0,0.02)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 2,
-              }}
+              <Check fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Recusar reserva">
+            <IconButton
+              onClick={() => handleOpenCancel(reserva)}
+              color="error"
+              size="small"
+              disabled={actionLoading}
+              aria-label={`Recusar reserva ${reserva.codigoReserva}`}
             >
-              <Box sx={{ p: 1.5, bgcolor: 'rgba(2, 136, 209, 0.08)', borderRadius: '12px', color: '#0288d1' }}>
-                <Timer />
-              </Box>
-              <Box>
-                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
-                  Solicitações Pendentes
-                </Typography>
-                <Typography variant="h5" sx={{ fontWeight: 700 }}>
-                  {pendingCount}
-                </Typography>
-              </Box>
-            </Paper>
-          </Grid>
-
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-            <Paper
-              sx={{
-                p: 2.5,
-                borderRadius: '16px',
-                border: '1px solid',
-                borderColor: 'divider',
-                boxShadow: '0 4px 20px 0 rgba(0,0,0,0.02)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 2,
-              }}
-            >
-              <Box sx={{ p: 1.5, bgcolor: 'rgba(237, 108, 2, 0.08)', borderRadius: '12px', color: '#ed6c02' }}>
-                <CalendarMonth />
-              </Box>
-              <Box>
-                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
-                  Aguardando Pagamento
-                </Typography>
-                <Typography variant="h5" sx={{ fontWeight: 700 }}>
-                  {awaitingPaymentCount}
-                </Typography>
-              </Box>
-            </Paper>
-          </Grid>
-
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-            <Paper
-              sx={{
-                p: 2.5,
-                borderRadius: '16px',
-                border: '1px solid',
-                borderColor: 'divider',
-                boxShadow: '0 4px 20px 0 rgba(0,0,0,0.02)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 2,
-              }}
-            >
-              <Box sx={{ p: 1.5, bgcolor: 'rgba(46, 125, 50, 0.08)', borderRadius: '12px', color: '#2e7d32' }}>
-                <CheckCircleOutlined />
-              </Box>
-              <Box>
-                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
-                  Estadias Concluídas
-                </Typography>
-                <Typography variant="h5" sx={{ fontWeight: 700 }}>
-                  {finalizedCount}
-                </Typography>
-              </Box>
-            </Paper>
-          </Grid>
-
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-            <Paper
-              sx={{
-                p: 2.5,
-                borderRadius: '16px',
-                border: '1px solid',
-                borderColor: 'divider',
-                boxShadow: '0 4px 20px 0 rgba(0,0,0,0.02)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 2,
-              }}
-            >
-              <Box sx={{ p: 1.5, bgcolor: 'rgba(0, 151, 167, 0.08)', borderRadius: '12px', color: '#0097A7' }}>
-                <AttachMoney />
-              </Box>
-              <Box>
-                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
-                  Faturamento Concluído
-                </Typography>
-                <Typography variant="h5" sx={{ fontWeight: 700 }}>
-                  R$ {totalRevenue}
-                </Typography>
-              </Box>
-            </Paper>
-          </Grid>
-        </Grid>
+              <Close fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </>
       )}
 
-      {/* Tabs Filter Section */}
-      <Paper sx={{ borderRadius: '16px', mb: 3, border: '1px solid', borderColor: 'divider', overflow: 'hidden' }}>
-        <Tabs
-          value={activeTab}
-          onChange={(_, val) => {
-            setActiveTab(val);
-            setPage(0);
-          }}
-          variant="scrollable"
-          scrollButtons="auto"
-          textColor="primary"
-          indicatorColor="primary"
-          sx={{ borderBottom: '1px solid', borderColor: 'divider' }}
-        >
-          <Tab label="Solicitações" sx={{ textTransform: 'none', fontWeight: 600 }} />
-          <Tab label="Aguardando Pagamento" sx={{ textTransform: 'none', fontWeight: 600 }} />
-          <Tab label="Finalizadas" sx={{ textTransform: 'none', fontWeight: 600 }} />
-          <Tab label="Canceladas" sx={{ textTransform: 'none', fontWeight: 600 }} />
-          <Tab label="Todas" sx={{ textTransform: 'none', fontWeight: 600 }} />
-        </Tabs>
-      </Paper>
+      {(reserva.status === 'CONFIRMADA' || reserva.status === 'AGUARDANDO_PAGAMENTO') && (
+        <>
+          {reserva.pagamento?.comprovanteUrl && !isMpEstabelecimento && (
+            <Tooltip title="Confirmar pagamento e finalizar">
+              <IconButton
+                onClick={() => handleOpenDetails(reserva)}
+                color="success"
+                size="small"
+                disabled={actionLoading}
+                aria-label={`Confirmar pagamento da reserva ${reserva.codigoReserva}`}
+              >
+                <CheckCircleOutlined fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
+          <Tooltip title="Cancelar reserva">
+            <IconButton
+              onClick={() => handleOpenCancel(reserva)}
+              color="error"
+              size="small"
+              disabled={actionLoading}
+              aria-label={`Cancelar reserva ${reserva.codigoReserva}`}
+            >
+              <CancelOutlined fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </>
+      )}
 
-      {/* Tabela de Listagem */}
-      {listLoading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-          <CircularProgress />
+      <Tooltip title="Ver detalhes">
+        <IconButton
+          onClick={() => handleOpenDetails(reserva)}
+          color="primary"
+          size="small"
+          aria-label={`Ver detalhes da reserva ${reserva.codigoReserva}`}
+        >
+          <Visibility fontSize="small" />
+        </IconButton>
+      </Tooltip>
+    </Stack>
+  );
+
+  const renderList = () => {
+    if (listLoading) {
+      return (
+        <Box sx={{ p: { xs: 2, md: 2.5 } }}>
+          <TableSkeleton rows={rowsPerPage > 8 ? 8 : rowsPerPage} columns={6} />
         </Box>
-      ) : !selectedEstablishment ? (
-        <Paper sx={{ p: 6, borderRadius: '20px', textAlign: 'center', border: '1px dashed', borderColor: 'divider' }}>
-          <Typography color="text.secondary">Nenhum estabelecimento selecionado.</Typography>
-        </Paper>
-      ) : reservations.length === 0 ? (
-        <Paper sx={{ p: 8, borderRadius: '20px', textAlign: 'center', border: '1px dashed', borderColor: 'divider' }}>
-          <CalendarMonth sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
-          <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
-            Nenhuma reserva nesta categoria
-          </Typography>
-          <Typography color="text.secondary">
-            Não há registros de reserva correspondentes a este filtro no momento.
-          </Typography>
-        </Paper>
-      ) : (
-        <Paper
-          sx={{
-            borderRadius: '20px',
-            border: '1px solid',
-            borderColor: 'divider',
-            boxShadow: '0 8px 32px 0 rgba(0,0,0,0.02)',
-            overflow: 'hidden',
-          }}
-        >
-          <TableContainer>
-            <Table>
-              <TableHead sx={{ bgcolor: 'rgba(0,0,0,0.015)' }}>
-                <TableRow>
-                  <TableCell sx={{ fontWeight: 600 }}>Código</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Hóspede</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Quarto</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Período</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Valor Total</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
-                  <TableCell align="center" sx={{ fontWeight: 600 }}>Ações</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {reservations.map((reserva) => {
-                  const statusInfo = statusMap[reserva.status] || { label: reserva.status, color: 'default', bg: 'rgba(0,0,0,0.04)', text: '#333' };
-                  const nights = dayjs(reserva.checkOut).diff(dayjs(reserva.checkIn), 'day');
+      );
+    }
 
-                  return (
-                    <TableRow key={reserva.id} hover>
-                      <TableCell>
-                        <Chip
-                          label={reserva.codigoReserva}
-                          size="small"
-                          sx={{
-                            fontFamily: '"Outfit", sans-serif',
-                            fontWeight: 700,
-                            bgcolor: 'rgba(0, 151, 167, 0.08)',
-                            color: '#0097A7',
-                            borderRadius: '6px',
-                          }}
-                        />
-                      </TableCell>
-                      <TableCell sx={{ fontWeight: 600 }}>
-                        {reserva.hospede?.nome}
-                        <Typography variant="caption" sx={{ display: 'block' }} color="text.secondary">
-                          {reserva.hospede?.email}
+    if (listError) {
+      return <ErrorState title="Não foi possível carregar as reservas" description={listError} onRetry={fetchReservations} />;
+    }
+
+    if (visibleReservations.length === 0) {
+      if (search.trim() && reservations.length > 0) {
+        return (
+          <EmptyState
+            icon={EmptySearchIcon}
+            title="Nenhum resultado para esta busca"
+            description="A busca considera os registros desta página. Ajuste o termo ou limpe a busca."
+            action={
+              <Button size="small" variant="outlined" onClick={() => setSearch('')}>
+                Limpar busca
+              </Button>
+            }
+          />
+        );
+      }
+      return (
+        <EmptyState
+          icon={<CalendarMonth />}
+          title="Nenhuma reserva nesta categoria"
+          description="Não há registros de reserva correspondentes a este filtro no momento."
+        />
+      );
+    }
+
+    return (
+      <>
+        <TableContainer sx={{ display: { xs: 'none', sm: 'block' }, overflowX: 'auto' }}>
+          <Table size="small" aria-label="Reservas do estabelecimento">
+            <TableHead>
+              <TableRow>
+                <TableCell>Código</TableCell>
+                <TableCell>Solicitada em</TableCell>
+                <TableCell>Hóspede</TableCell>
+                <TableCell>Quarto</TableCell>
+                <TableCell>Período</TableCell>
+                <TableCell align="right">Valor</TableCell>
+                <TableCell>Status</TableCell>
+                <TableCell>Pagamento</TableCell>
+                <TableCell align="center" aria-label="Ações" />
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {visibleReservations.map((reserva) => {
+                const nights = nightsBetween(reserva.checkIn, reserva.checkOut);
+                return (
+                  <TableRow key={reserva.id} hover>
+                    <TableCell sx={{ py: 1.25 }}>
+                      <Chip
+                        label={reserva.codigoReserva}
+                        size="small"
+                        variant="outlined"
+                        sx={{ fontWeight: 600, borderColor: 'divider' }}
+                      />
+                    </TableCell>
+                    <TableCell sx={{ py: 1.25, whiteSpace: 'nowrap' }}>
+                      <Typography variant="body2">{formatDate(reserva.criadoEm)}</Typography>
+                      <Typography variant="caption" color="textSecondary" sx={{ display: 'block' }}>
+                        {formatDate(reserva.criadoEm, { hour: '2-digit', minute: '2-digit' })}
+                      </Typography>
+                    </TableCell>
+                    <TableCell sx={{ py: 1.25 }}>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                        {reserva.hospede?.nome || '—'}
+                      </Typography>
+                      <Typography
+                        variant="caption"
+                        color="textSecondary"
+                        noWrap
+                        title={reserva.hospede?.email}
+                        sx={{ display: 'block', maxWidth: 190 }}
+                      >
+                        {reserva.hospede?.email}
+                      </Typography>
+                    </TableCell>
+                    <TableCell sx={{ py: 1.25, whiteSpace: 'nowrap' }}>
+                      <Typography variant="body2" color="textSecondary">
+                        {reserva.quarto?.nome || '—'}
+                      </Typography>
+                    </TableCell>
+                    <TableCell sx={{ py: 1.25, whiteSpace: 'nowrap' }}>
+                      <Typography variant="body2">
+                        {formatDate(reserva.checkIn)} a {formatDate(reserva.checkOut)}
+                      </Typography>
+                      <Typography variant="caption" color="textSecondary">
+                        {nights} {nights === 1 ? 'noite' : 'noites'} · {reserva.adultos}{' '}
+                        {reserva.adultos === 1 ? 'adulto' : 'adultos'}
+                        {reserva.criancas > 0
+                          ? ` · ${reserva.criancas} ${reserva.criancas === 1 ? 'criança' : 'crianças'}`
+                          : ''}
+                      </Typography>
+                    </TableCell>
+                    <TableCell align="right" sx={{ py: 1.25, whiteSpace: 'nowrap' }}>
+                      <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                        {formatCurrency(reserva.valorTotal)}
+                      </Typography>
+                    </TableCell>
+                    <TableCell sx={{ py: 1.25 }}>
+                      <StatusChip status={reserva.status} />
+                    </TableCell>
+                    <TableCell sx={{ py: 1.25 }}>
+                      {reserva.modoPagamento ? (
+                        <ModoPagamentoChip modo={reserva.modoPagamento} />
+                      ) : (
+                        <Typography variant="caption" color="textSecondary">
+                          —
                         </Typography>
-                      </TableCell>
-                      <TableCell>{reserva.quarto?.nome}</TableCell>
-                      <TableCell>
-                        <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                          {dayjs(reserva.checkIn).format('DD/MM/YYYY')} a {dayjs(reserva.checkOut).format('DD/MM/YYYY')}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          ({nights} {nights === 1 ? 'noite' : 'noites'}, {reserva.adultos} Adt {reserva.criancas > 0 && `, ${reserva.criancas} Crianças`})
-                        </Typography>
-                      </TableCell>
-                      <TableCell sx={{ fontWeight: 700 }} color="primary.main">
-                        R$ {Number(reserva.valorTotal).toFixed(2)}
-                      </TableCell>
-                      <TableCell>
-                        <Chip
-                          label={statusInfo.label}
-                          size="small"
-                          sx={{
-                            bgcolor: statusInfo.bg,
-                            color: statusInfo.text,
-                            fontWeight: 700,
-                            borderRadius: '8px',
-                          }}
-                        />
-                      </TableCell>
-                      <TableCell align="center">
-                        <Box sx={{ display: 'flex', justifyContent: 'center', gap: 1 }}>
-                          {reserva.status === 'SOLICITADA' && (
-                            <>
-                              <Tooltip title="Confirmar Reserva">
-                                <IconButton
-                                  onClick={() => handleConfirmReservation(reserva.id)}
-                                  color="success"
-                                  size="small"
-                                  disabled={actionLoading}
-                                >
-                                  <Check />
-                                </IconButton>
-                              </Tooltip>
-                              <Tooltip title="Recusar Reserva">
-                                <IconButton
-                                  onClick={() => handleOpenCancel(reserva)}
-                                  color="error"
-                                  size="small"
-                                  disabled={actionLoading}
-                                >
-                                  <Close />
-                                </IconButton>
-                              </Tooltip>
-                            </>
-                          )}
+                      )}
+                    </TableCell>
+                    <TableCell align="center" sx={{ py: 0.5, whiteSpace: 'nowrap' }}>
+                      {renderReservationActions(reserva)}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </TableContainer>
 
-                          {(reserva.status === 'CONFIRMADA' || reserva.status === 'AGUARDANDO_PAGAMENTO') && (
-                            <>
-                              {reserva.pagamento?.comprovanteUrl && !isMpEstabelecimento && (
-                                <Tooltip title="Confirmar Pagamento e Finalizar">
-                                  <IconButton
-                                    onClick={() => handleOpenDetails(reserva)}
-                                    color="success"
-                                    size="small"
-                                    disabled={actionLoading}
-                                  >
-                                    <CheckCircleOutlined />
-                                  </IconButton>
-                                </Tooltip>
-                              )}
-                              <Tooltip title="Cancelar Reserva">
-                                <IconButton
-                                  onClick={() => handleOpenCancel(reserva)}
-                                  color="error"
-                                  size="small"
-                                  disabled={actionLoading}
-                                >
-                                  <CancelOutlined />
-                                </IconButton>
-                              </Tooltip>
-                            </>
-                          )}
+        {/* Mobile: lista de cards */}
+        <Stack spacing={1.5} sx={{ display: { xs: 'flex', sm: 'none' }, p: 2 }}>
+          {visibleReservations.map((reserva) => {
+            const nights = nightsBetween(reserva.checkIn, reserva.checkOut);
+            return (
+              <Box
+                key={reserva.id}
+                sx={{
+                  p: 2,
+                  borderRadius: `${radius.lg}px`,
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  bgcolor: 'background.paper',
+                }}
+              >
+                <Box
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 1,
+                    mb: 1,
+                  }}
+                >
+                  <Chip
+                    label={reserva.codigoReserva}
+                    size="small"
+                    variant="outlined"
+                    sx={{ fontWeight: 600, borderColor: 'divider' }}
+                  />
+                  <StatusChip status={reserva.status} />
+                </Box>
 
-                          <Tooltip title="Visualizar Detalhes">
-                            <IconButton
-                              onClick={() => handleOpenDetails(reserva)}
-                              color="primary"
-                              size="small"
-                            >
-                              <Visibility />
-                            </IconButton>
-                          </Tooltip>
-                        </Box>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </TableContainer>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                  {reserva.hospede?.nome || '—'}
+                </Typography>
+                <Typography variant="caption" color="textSecondary" sx={{ display: 'block' }}>
+                  {reserva.quarto?.nome || 'Quarto a definir'} · {formatDate(reserva.checkIn)} a{' '}
+                  {formatDate(reserva.checkOut)} · {nights} {nights === 1 ? 'noite' : 'noites'}
+                </Typography>
+                <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mt: 0.25 }}>
+                  Solicitada em {formatDate(reserva.criadoEm)} às{' '}
+                  {formatDate(reserva.criadoEm, { hour: '2-digit', minute: '2-digit' })}
+                </Typography>
 
+                <Box
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 1,
+                    mt: 1.5,
+                  }}
+                >
+                  <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                    {formatCurrency(reserva.valorTotal)}
+                  </Typography>
+                  {reserva.modoPagamento && <ModoPagamentoChip modo={reserva.modoPagamento} />}
+                </Box>
+
+                <Box sx={{ mt: 1 }}>{renderReservationActions(reserva)}</Box>
+              </Box>
+            );
+          })}
+        </Stack>
+
+        <Box sx={{ borderTop: '1px solid', borderColor: 'divider' }}>
           <TablePagination
             rowsPerPageOptions={[5, 10, 25]}
             component="div"
@@ -734,266 +791,609 @@ export default function EstReservations() {
             onPageChange={handleChangePage}
             onRowsPerPageChange={handleChangeRowsPerPage}
             labelRowsPerPage="Linhas por página:"
-            labelDisplayedRows={({ from, to, count }) => `${from}-${to} de ${count !== -1 ? count : `mais de ${to}`}`}
+            labelDisplayedRows={({ from, to, count }) =>
+              `${from}-${to} de ${count !== -1 ? count : `mais de ${to}`}`
+            }
+            sx={{
+              '& .MuiTablePagination-toolbar': {
+                flexWrap: 'wrap',
+                gap: 1,
+                justifyContent: { xs: 'center', sm: 'flex-end' },
+              },
+            }}
           />
-        </Paper>
+        </Box>
+      </>
+    );
+  };
+
+  const booting = loading;
+
+  return (
+    <PageContainer maxWidth="wide">
+      <PageHeader
+        overline="Gestão de reservas"
+        title="Reservas"
+        subtitle="Acompanhe solicitações, confirme reservas e aprove comprovantes de pagamento."
+        icon={<Receipt />}
+        actions={
+          <>
+            {establishments.length > 1 && (
+              <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 220 } }}>
+                <InputLabel id="est-select-label">Estabelecimento</InputLabel>
+                <Select
+                  labelId="est-select-label"
+                  value={selectedEstablishment?.id || ''}
+                  label="Estabelecimento"
+                  onChange={(e) => handleEstablishmentChange(e.target.value)}
+                >
+                  {establishments.map((est) => (
+                    <MenuItem key={est.id} value={est.id}>
+                      {est.nome}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            )}
+            <Button
+              variant="outlined"
+              startIcon={<Refresh />}
+              onClick={fetchReservations}
+              disabled={listLoading || !selectedEstablishment}
+            >
+              Atualizar
+            </Button>
+          </>
+        }
+      />
+
+      {booting ? (
+        <>
+          <Grid container spacing={2.5} sx={{ mb: 3 }}>
+            {[
+              'Solicitações pendentes',
+              'Aguardando pagamento',
+              'Estadias concluídas',
+              'Faturamento concluído',
+            ].map((label) => (
+              <Grid key={label} size={{ xs: 12, sm: 6, lg: 3 }}>
+                <StatCard
+                  label={label}
+                  value=""
+                  loading
+                  sx={{ borderRadius: `${radius.xl}px` }}
+                />
+              </Grid>
+            ))}
+          </Grid>
+          <SectionCard noPadding>
+            <Box sx={{ p: { xs: 2, md: 2.5 } }}>
+              <TableSkeleton rows={6} columns={6} />
+            </Box>
+          </SectionCard>
+        </>
+      ) : !selectedEstablishment ? (
+        <SectionCard>
+          <EmptyState
+            icon={<Hotel />}
+            title="Nenhum estabelecimento encontrado"
+            description="Sua conta não está vinculada a um estabelecimento. Fale com o administrador da plataforma para regularizar o acesso."
+          />
+        </SectionCard>
+      ) : (
+        <Stack spacing={3}>
+          {/* Indicadores */}
+          <Grid container spacing={2.5}>
+            <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
+              <StatCard
+                label="Solicitações pendentes"
+                value={pendingCount}
+                icon={<Timer />}
+                tone="warning"
+                hint="Aguardando sua análise"
+                loading={!statsLoaded}
+                sx={{ borderRadius: `${radius.xl}px` }}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
+              <StatCard
+                label="Aguardando pagamento"
+                value={awaitingPaymentCount}
+                icon={<CalendarMonth />}
+                tone="info"
+                hint="Confirmadas sem pagamento aprovado"
+                loading={!statsLoaded}
+                sx={{ borderRadius: `${radius.xl}px` }}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
+              <StatCard
+                label="Estadias concluídas"
+                value={finalizedCount}
+                icon={<CheckCircleOutlined />}
+                tone="success"
+                hint="Reservas finalizadas"
+                loading={!statsLoaded}
+                sx={{ borderRadius: `${radius.xl}px` }}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
+              <StatCard
+                label="Faturamento concluído"
+                value={formatCurrency(Number(totalRevenue))}
+                icon={<AttachMoney />}
+                tone="primary"
+                hint="Soma das reservas finalizadas"
+                loading={!statsLoaded}
+                sx={{ borderRadius: `${radius.xl}px` }}
+              />
+            </Grid>
+          </Grid>
+
+          {/* Listagem */}
+          <SectionCard
+            title="Lista de reservas"
+            subtitle={`${totalCount} ${totalCount === 1 ? 'reserva' : 'reservas'} no filtro atual`}
+            noPadding
+          >
+            <Tabs
+              value={activeTab}
+              onChange={(_, val) => {
+                setActiveTab(val);
+                setPage(0);
+              }}
+              variant="scrollable"
+              scrollButtons="auto"
+              textColor="primary"
+              indicatorColor="primary"
+              sx={{ px: { xs: 1, md: 2 } }}
+              aria-label="Filtrar reservas por status"
+            >
+              <Tab label="Solicitações" />
+              <Tab label="Aguardando pagamento" />
+              <Tab label="Finalizadas" />
+              <Tab label="Canceladas" />
+              <Tab label="Todas" />
+            </Tabs>
+
+            <Box sx={{ px: { xs: 2, md: 3 }, pt: 2.5, pb: 1.5 }}>
+              <DataToolbar sx={{ mb: 1.5 }}>
+                <DataToolbarGroup>
+                  <SearchField
+                    value={search}
+                    onChange={setSearch}
+                    placeholder="Buscar código, hóspede ou quarto"
+                    width={360}
+                  />
+                </DataToolbarGroup>
+                <Typography variant="caption" color="textSecondary" sx={{ whiteSpace: 'nowrap' }}>
+                  {search.trim()
+                    ? `${visibleReservations.length} de ${reservations.length} nesta página`
+                    : `${reservations.length} nesta página`}
+                </Typography>
+              </DataToolbar>
+
+              {/* Filtro por período — vazio por padrão (lista todas as reservas) */}
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1,
+                  flexWrap: 'wrap',
+                  px: 1.5,
+                  py: 1,
+                  borderRadius: `${radius.lg}px`,
+                  border: '1px solid',
+                  borderColor: 'divider',
+                }}
+              >
+                <Tooltip
+                  title={
+                    campoData === 'estadia'
+                      ? 'Mostra as reservas que se sobrepõem a este período (inclui quem já estava hospedado no início dele).'
+                      : 'Mostra as reservas criadas (solicitadas) dentro deste período.'
+                  }
+                >
+                  <Typography
+                    variant="caption"
+                    color="textSecondary"
+                    sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0, cursor: 'help' }}
+                  >
+                    <CalendarMonth fontSize="small" aria-hidden />
+                    Filtrar por
+                  </Typography>
+                </Tooltip>
+                <TextField
+                  select
+                  size="small"
+                  label="Campo"
+                  value={campoData}
+                  onChange={(e) => {
+                    setCampoData(e.target.value as 'estadia' | 'solicitacao');
+                    setPage(0);
+                  }}
+                  slotProps={{ inputLabel: { shrink: true } }}
+                  sx={{ width: 190, flexShrink: 0 }}
+                >
+                  <MenuItem value="estadia">Período da estadia</MenuItem>
+                  <MenuItem value="solicitacao">Data da solicitação</MenuItem>
+                </TextField>
+                <TextField
+                  type="date"
+                  size="small"
+                  label={campoData === 'estadia' ? 'De' : 'Solicitada de'}
+                  value={dataInicio}
+                  onChange={(e) => {
+                    setDataInicio(e.target.value);
+                    setPage(0);
+                  }}
+                  slotProps={{
+                    inputLabel: { shrink: true },
+                    htmlInput: { 'aria-label': 'Data inicial do filtro' },
+                  }}
+                  sx={{ width: 176, flexShrink: 0 }}
+                />
+                <TextField
+                  type="date"
+                  size="small"
+                  label="Até"
+                  value={dataFim}
+                  onChange={(e) => {
+                    setDataFim(e.target.value);
+                    setPage(0);
+                  }}
+                  slotProps={{
+                    inputLabel: { shrink: true },
+                    htmlInput: { 'aria-label': 'Data final do filtro' },
+                  }}
+                  sx={{ width: 158, flexShrink: 0 }}
+                />
+                {(dataInicio || dataFim) && (
+                  <Button
+                    size="small"
+                    variant="text"
+                    onClick={() => {
+                      setDataInicio('');
+                      setDataFim('');
+                      setPage(0);
+                    }}
+                    startIcon={<Close fontSize="small" />}
+                    sx={{ flexShrink: 0 }}
+                  >
+                    Limpar
+                  </Button>
+                )}
+              </Box>
+            </Box>
+
+            {renderList()}
+          </SectionCard>
+        </Stack>
       )}
 
-      {/* Cancel Reservation Dialog */}
-      <Dialog
-        open={cancelOpen}
-        onClose={() => !actionLoading && setCancelOpen(false)}
-        maxWidth="xs"
-        fullWidth
-        sx={{ '& .MuiDialog-paper': { borderRadius: '16px' } }}
-      >
-        <DialogTitle sx={{ fontFamily: '"Outfit", sans-serif', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
-          <WarningAmber sx={{ color: 'error.main' }} />
-          Justificativa de Cancelamento
-        </DialogTitle>
-        <DialogContent>
-          <DialogContentText sx={{ mb: 2 }}>
-            Informe o motivo do cancelamento da reserva <strong>{reservationToCancel?.codigoReserva}</strong>. O hóspede será notificado por e-mail.
-          </DialogContentText>
-          <TextField
-            label="Motivo do Cancelamento"
-            fullWidth
-            required
-            multiline
-            rows={3}
-            disabled={actionLoading}
-            value={cancelReason}
-            onChange={(e) => setCancelReason(e.target.value)}
-            placeholder="Ex: Não identificamos o pagamento no prazo estabelecido."
-          />
-        </DialogContent>
-        <DialogActions sx={{ p: 2.5, gap: 1 }}>
-          <Button onClick={() => setCancelOpen(false)} disabled={actionLoading} sx={{ textTransform: 'none', fontWeight: 600 }}>
-            Voltar
-          </Button>
-          <Button
-            variant="contained"
-            color="error"
-            onClick={handleConfirmCancel}
-            disabled={actionLoading || !cancelReason}
-            sx={{ borderRadius: '8px', textTransform: 'none', fontWeight: 600 }}
-          >
-            {actionLoading ? 'Cancelando...' : 'Confirmar Cancelamento'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Detailed Reservation Dialog */}
+      {/* Detalhe da reserva */}
       <Dialog
         open={detailsOpen}
         onClose={() => setDetailsOpen(false)}
         maxWidth="md"
         fullWidth
-        sx={{ '& .MuiDialog-paper': { borderRadius: '16px' } }}
+        aria-labelledby="reserva-detalhe-titulo"
+        sx={{ '& .MuiDialog-paper': { borderRadius: `${radius.xl}px` } }}
       >
-        <DialogTitle sx={{ fontFamily: '"Outfit", sans-serif', fontWeight: 700, borderBottom: '1px solid', borderColor: 'divider', pb: 2 }}>
-          Detalhes da Reserva: {selectedReservation?.codigoReserva}
+        <DialogTitle
+          id="reserva-detalhe-titulo"
+          sx={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            gap: 1.5,
+            pr: 6,
+            borderBottom: '1px solid',
+            borderColor: 'divider',
+            pb: 2,
+          }}
+        >
+          <Box sx={{ minWidth: 0 }}>
+            <Typography variant="h6" component="span" sx={{ display: 'block' }}>
+              Reserva {selectedReservation?.codigoReserva || ''}
+            </Typography>
+            {selectedReservation?.criadoEm && (
+              <Typography variant="caption" color="textSecondary">
+                Criada em {formatDate(selectedReservation.criadoEm)}
+              </Typography>
+            )}
+          </Box>
+          <Stack direction="row" spacing={1} sx={{ ml: { sm: 'auto' }, flexWrap: 'wrap' }}>
+            {selectedReservation && <StatusChip status={selectedReservation.status} />}
+            {selectedReservation?.modoPagamento && (
+              <ModoPagamentoChip modo={selectedReservation.modoPagamento} />
+            )}
+          </Stack>
+          <IconButton
+            aria-label="Fechar detalhes"
+            onClick={() => setDetailsOpen(false)}
+            sx={{ position: 'absolute', right: 12, top: 12 }}
+          >
+            <Close fontSize="small" />
+          </IconButton>
         </DialogTitle>
+
         <DialogContent sx={{ py: 3 }}>
           {selectedReservation && (
-            <Grid container spacing={4}>
-              {/* Left Column: Reservation Info */}
-              <Grid size={{ xs: 12, md: 6 }}>
-                <Typography variant="subtitle2" color="primary.main" sx={{ fontWeight: 700, mb: 1.5, textTransform: 'uppercase', letterSpacing: 1 }}>
-                  Dados da Estadia
+            <Stack spacing={3}>
+              <Box>
+                <Typography
+                  variant="overline"
+                  color="primary"
+                  sx={{ display: 'block', mb: 1.5, fontWeight: 700 }}
+                >
+                  Estadia
                 </Typography>
-                
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <Typography variant="body2" color="text.secondary">Status:</Typography>
-                    <Chip
-                      label={selectedReservation.status}
-                      size="small"
-                      color={statusMap[selectedReservation.status]?.color || 'default'}
-                      sx={{ fontWeight: 600, height: 20 }}
-                    />
-                  </Box>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <Typography variant="body2" color="text.secondary">Quarto reservado:</Typography>
-                    <Typography variant="body2" sx={{ fontWeight: 600 }}>{selectedReservation.quarto?.nome}</Typography>
-                  </Box>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <Typography variant="body2" color="text.secondary">Check-In:</Typography>
-                    <Typography variant="body2" sx={{ fontWeight: 600 }}>{dayjs(selectedReservation.checkIn).format('DD/MM/YYYY')}</Typography>
-                  </Box>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <Typography variant="body2" color="text.secondary">Check-Out:</Typography>
-                    <Typography variant="body2" sx={{ fontWeight: 600 }}>{dayjs(selectedReservation.checkOut).format('DD/MM/YYYY')}</Typography>
-                  </Box>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <Typography variant="body2" color="text.secondary">Acompanhantes:</Typography>
-                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                      {selectedReservation.adultos} {selectedReservation.adultos === 1 ? 'Adulto' : 'Adultos'}
-                      {selectedReservation.criancas > 0 && ` e ${selectedReservation.criancas} ${selectedReservation.criancas === 1 ? 'Criança' : 'Crianças'}`}
-                    </Typography>
-                  </Box>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed', borderColor: 'divider', pt: 1 }}>
-                    <Typography variant="body1" sx={{ fontWeight: 700 }}>Valor Total:</Typography>
-                    <Typography variant="body1" color="primary.main" sx={{ fontWeight: 800 }}>
-                      R$ {Number(selectedReservation.valorTotal).toFixed(2)}
-                    </Typography>
-                  </Box>
+                <InfoGrid columns={2}>
+                  <InfoItem label="Quarto" value={selectedReservation.quarto?.nome || '—'} />
+                  <InfoItem
+                    label="Hóspedes"
+                    value={`${selectedReservation.adultos} ${
+                      selectedReservation.adultos === 1 ? 'adulto' : 'adultos'
+                    }${
+                      selectedReservation.criancas > 0
+                        ? ` e ${selectedReservation.criancas} ${
+                            selectedReservation.criancas === 1 ? 'criança' : 'crianças'
+                          }`
+                        : ''
+                    }`}
+                  />
+                  <InfoItem
+                    label="Check-in"
+                    value={formatDate(selectedReservation.checkIn)}
+                    icon={<CalendarMonth sx={{ fontSize: 16 }} />}
+                  />
+                  <InfoItem
+                    label="Check-out"
+                    value={formatDate(selectedReservation.checkOut)}
+                    icon={<CalendarMonth sx={{ fontSize: 16 }} />}
+                  />
+                  <InfoItem
+                    label="Duração"
+                    value={`${detailsNights} ${detailsNights === 1 ? 'noite' : 'noites'}`}
+                  />
+                  <InfoItem
+                    label="Valor total"
+                    value={formatCurrency(selectedReservation.valorTotal)}
+                    emphasis
+                  />
+                </InfoGrid>
+              </Box>
+
+              {selectedReservation.observacoes && (
+                <Box
+                  sx={{
+                    p: 2,
+                    borderRadius: `${radius.lg}px`,
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    bgcolor: 'action.hover',
+                  }}
+                >
+                  <Typography
+                    variant="caption"
+                    color="textSecondary"
+                    sx={{ display: 'block', fontWeight: 600, mb: 0.5 }}
+                  >
+                    Observações do hóspede
+                  </Typography>
+                  <Typography variant="body2">{selectedReservation.observacoes}</Typography>
                 </Box>
+              )}
 
-                {selectedReservation.observacoes && (
-                  <Box sx={{ mt: 3, p: 2, bgcolor: 'rgba(0,0,0,0.015)', borderRadius: '10px', border: '1px solid', borderColor: 'divider' }}>
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontWeight: 600, mb: 0.5 }}>
-                      Observações do hóspede:
-                    </Typography>
-                    <Typography variant="body2">
-                      {selectedReservation.observacoes}
-                    </Typography>
-                  </Box>
-                )}
+              {selectedReservation.cancelamentoMotivo && (
+                <Alert severity="error">
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                    Motivo do cancelamento
+                  </Typography>
+                  <Typography variant="body2">{selectedReservation.cancelamentoMotivo}</Typography>
+                </Alert>
+              )}
 
-                {selectedReservation.cancelamentoMotivo && (
-                  <Box sx={{ mt: 3, p: 2, bgcolor: 'rgba(211, 47, 47, 0.04)', borderRadius: '10px', border: '1px solid', borderColor: 'rgba(211, 47, 47, 0.2)' }}>
-                    <Typography variant="caption" color="error.main" sx={{ display: 'block', fontWeight: 600, mb: 0.5 }}>
-                      Motivo do Cancelamento:
-                    </Typography>
-                    <Typography variant="body2" color="error.main" sx={{ fontWeight: 500 }}>
-                      {selectedReservation.cancelamentoMotivo}
-                    </Typography>
-                  </Box>
-                )}
-              </Grid>
-
-              {/* Right Column: Guest Info & Payment Info */}
-              <Grid size={{ xs: 12, md: 6 }}>
-                <Typography variant="subtitle2" color="primary.main" sx={{ fontWeight: 700, mb: 1.5, textTransform: 'uppercase', letterSpacing: 1 }}>
-                  Dados do Hóspede
+              <Box>
+                <Typography
+                  variant="overline"
+                  color="primary"
+                  sx={{ display: 'block', mb: 1.5, fontWeight: 700 }}
+                >
+                  Hóspede
                 </Typography>
-                <Paper variant="outlined" sx={{ p: 2, borderRadius: '12px', mb: 4 }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                    <Avatar sx={{ bgcolor: 'rgba(0, 151, 167, 0.08)', color: '#0097A7', fontWeight: 700 }}>
-                      {selectedReservation.hospede?.nome.charAt(0).toUpperCase()}
-                    </Avatar>
-                    <Box>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                        {selectedReservation.hospede?.nome}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                        ID Hóspede: {selectedReservation.hospede?.id}
-                      </Typography>
-                    </Box>
-                  </Box>
-
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Email sx={{ fontSize: 16, color: 'text.secondary' }} />
-                      <Typography variant="body2" component="a" href={`mailto:${selectedReservation.hospede?.email}`} sx={{ color: 'primary.main', textDecoration: 'none' }}>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 2,
+                    p: 2,
+                    borderRadius: `${radius.lg}px`,
+                    border: '1px solid',
+                    borderColor: 'divider',
+                  }}
+                >
+                  <Avatar sx={{ bgcolor: 'action.selected', color: 'primary.main', fontWeight: 700 }}>
+                    {selectedReservation.hospede?.nome?.charAt(0)?.toUpperCase() || '?'}
+                  </Avatar>
+                  <Box sx={{ minWidth: 0 }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                      {selectedReservation.hospede?.nome || '—'}
+                    </Typography>
+                    <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
+                      <Typography
+                        variant="caption"
+                        component="a"
+                        href={`mailto:${selectedReservation.hospede?.email}`}
+                        sx={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 0.5,
+                          color: 'primary.main',
+                          textDecoration: 'none',
+                          '&:hover': { textDecoration: 'underline' },
+                        }}
+                      >
+                        <Email sx={{ fontSize: 16 }} aria-hidden />
                         {selectedReservation.hospede?.email}
                       </Typography>
-                    </Box>
-                    {selectedReservation.hospede?.telefone && (
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Phone sx={{ fontSize: 16, color: 'text.secondary' }} />
-                        <Typography variant="body2" component="a" href={`tel:${selectedReservation.hospede?.telefone}`} sx={{ color: 'text.primary', textDecoration: 'none' }}>
+                      {selectedReservation.hospede?.telefone && (
+                        <Typography
+                          variant="caption"
+                          component="a"
+                          href={`tel:${selectedReservation.hospede?.telefone}`}
+                          sx={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 0.5,
+                            color: 'text.secondary',
+                            textDecoration: 'none',
+                            '&:hover': { textDecoration: 'underline' },
+                          }}
+                        >
+                          <Phone sx={{ fontSize: 16 }} aria-hidden />
                           {selectedReservation.hospede?.telefone}
                         </Typography>
+                      )}
+                    </Stack>
+                  </Box>
+                </Box>
+              </Box>
+
+              <Box>
+                <Typography
+                  variant="overline"
+                  color="primary"
+                  sx={{ display: 'block', mb: 1.5, fontWeight: 700 }}
+                >
+                  Pagamento
+                </Typography>
+
+                {paymentLoading ? (
+                  <InlineLoading label="Carregando dados do pagamento⬦" />
+                ) : !detailedPayment ? (
+                  <EmptyState
+                    compact
+                    icon={<AttachMoney />}
+                    title="Nenhuma cobrança gerada ainda"
+                    description={
+                      isMpEstabelecimento
+                        ? 'O hóspede ainda não iniciou o checkout no Mercado Pago. Assim que pagar, a confirmação chega automaticamente.'
+                        : 'O hóspede ainda não escolheu a forma de pagamento. No modo Pagamento direto ele precisa enviar o comprovante por Pix, boleto ou cartão.'
+                    }
+                  />
+                ) : (
+                  <Box
+                    sx={{
+                      p: 2.5,
+                      borderRadius: `${radius.lg}px`,
+                      border: '1px solid',
+                      borderColor: 'divider',
+                    }}
+                  >
+                    {/* Forma escolhida em destaque — é a informação que o gestor
+                        precisa para conferir o comprovante. */}
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 2,
+                        p: 1.75,
+                        mb: 2,
+                        borderRadius: `${radius.md}px`,
+                        bgcolor: 'action.hover',
+                      }}
+                    >
+                      <Box sx={{ color: 'primary.main', display: 'flex' }}>
+                        <AttachMoney aria-hidden />
+                      </Box>
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography variant="caption" color="textSecondary" sx={{ display: 'block' }}>
+                          Forma de pagamento escolhida
+                        </Typography>
+                        <Typography variant="subtitle1" sx={{ fontWeight: 700, lineHeight: 1.3 }}>
+                          {paymentMethodLabel(detailedPayment.metodo)}
+                        </Typography>
+                      </Box>
+                      <Box sx={{ ml: 'auto', flexShrink: 0 }}>
+                        <StatusChip
+                          status={paymentChipStatus(detailedPayment.status)}
+                          label={
+                            PAYMENT_STATUS_LABEL[detailedPayment.status] || detailedPayment.status
+                          }
+                        />
+                      </Box>
+                    </Box>
+
+                    <InfoGrid columns={2}>
+                      <InfoItem
+                        label="Valor do pagamento"
+                        value={formatCurrency(detailedPayment.valor)}
+                        emphasis
+                      />
+                      <InfoItem
+                        label="Modo do estabelecimento"
+                        value={<ModoPagamentoChip modo={selectedReservation?.modoPagamento} />}
+                      />
+                      {detailedPayment.codigoTransacao && (
+                        <InfoItem
+                          label="Código da transação"
+                          value={
+                            <Typography variant="caption" sx={{ wordBreak: 'break-all' }}>
+                              {detailedPayment.codigoTransacao}
+                            </Typography>
+                          }
+                        />
+                      )}
+                    </InfoGrid>
+
+                    {isMpEstabelecimento && (
+                      <Alert severity="info" sx={{ mt: 2 }}>
+                        Confirmação automática via Mercado Pago — não é necessário anexar comprovante.
+                      </Alert>
+                    )}
+
+                    {!isMpEstabelecimento && detailedPayment.comprovanteUrl && (
+                      <Box sx={{ mt: 2 }}>
+                        <Button
+                          variant="outlined"
+                          startIcon={<PictureAsPdf />}
+                          endIcon={<OpenInNew />}
+                          component="a"
+                          href={detailedPayment.comprovanteUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          fullWidth
+                          sx={{ justifyContent: 'space-between' }}
+                        >
+                          Visualizar comprovante
+                        </Button>
                       </Box>
                     )}
                   </Box>
-                </Paper>
-
-                <Typography variant="subtitle2" color="primary.main" sx={{ fontWeight: 700, mb: 1.5, textTransform: 'uppercase', letterSpacing: 1 }}>
-                  Informações de Pagamento
-                </Typography>
-                
-                {paymentLoading ? (
-                  <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
-                    <CircularProgress size={24} />
-                  </Box>
-                ) : !detailedPayment ? (
-                  <Paper variant="outlined" sx={{ p: 2.5, borderRadius: '12px', bgcolor: 'rgba(0,0,0,0.01)', borderStyle: 'dashed', textAlign: 'center' }}>
-                    <Typography variant="body2" color="text.secondary">
-                      Nenhum pagamento registrado para esta reserva.
-                    </Typography>
-                  </Paper>
-                ) : (
-                  <Paper variant="outlined" sx={{ p: 2.5, borderRadius: '12px' }}>
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <Typography variant="body2" color="text.secondary">Método:</Typography>
-                        <Typography variant="body2" sx={{ fontWeight: 700 }}>{detailedPayment.metodo}</Typography>
-                      </Box>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <Typography variant="body2" color="text.secondary">Valor do Pagamento:</Typography>
-                        <Typography variant="body2" sx={{ fontWeight: 700 }}>R$ {Number(detailedPayment.valor).toFixed(2)}</Typography>
-                      </Box>
-                      {detailedPayment.codigoTransacao && (
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <Typography variant="body2" color="text.secondary">Transação:</Typography>
-                          <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{detailedPayment.codigoTransacao}</Typography>
-                        </Box>
-                      )}
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <Typography variant="body2" color="text.secondary">Status do Pagamento:</Typography>
-                        <Chip
-                          label={detailedPayment.status}
-                          size="small"
-                          color={detailedPayment.status === 'CONFIRMADO' ? 'success' : 'warning'}
-                          sx={{ fontWeight: 600, height: 18, fontSize: '0.65rem' }}
-                        />
-                      </Box>
-
-                      {isMpEstabelecimento && (
-                        <Alert severity="info" sx={{ borderRadius: '8px', py: 0.5 }}>
-                          Confirmação automática via Mercado Pago — não é necessário anexar comprovante.
-                        </Alert>
-                      )}
-
-                      {!isMpEstabelecimento && detailedPayment.comprovanteUrl && (
-                        <Box sx={{ mt: 1.5, borderTop: '1px solid', borderColor: 'divider', pt: 1.5 }}>
-                          <Typography variant="body2" sx={{ fontWeight: 600, mb: 1 }}>
-                            Comprovante Anexado:
-                          </Typography>
-                          
-                          <Button
-                            variant="outlined"
-                            startIcon={<PictureAsPdf />}
-                            endIcon={<OpenInNew />}
-                            component="a"
-                            href={detailedPayment.comprovanteUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            fullWidth
-                            sx={{
-                              borderRadius: '8px',
-                              textTransform: 'none',
-                              justifyContent: 'space-between',
-                              borderColor: 'divider',
-                              color: 'text.primary',
-                              '&:hover': {
-                                bgcolor: 'rgba(0,151,167,0.04)',
-                                borderColor: 'primary.main',
-                              }
-                            }}
-                          >
-                            Visualizar Comprovante
-                          </Button>
-                        </Box>
-                      )}
-                    </Box>
-                  </Paper>
                 )}
-              </Grid>
-            </Grid>
+              </Box>
+            </Stack>
           )}
         </DialogContent>
-        
-        <DialogActions sx={{ p: 2.5, borderTop: '1px solid', borderColor: 'divider', justifyContent: 'space-between' }}>
-          <Button onClick={() => setDetailsOpen(false)} sx={{ textTransform: 'none', fontWeight: 600 }}>
+
+        <DialogActions
+          sx={{
+            p: 2.5,
+            gap: 1,
+            flexWrap: 'wrap',
+            borderTop: '1px solid',
+            borderColor: 'divider',
+          }}
+        >
+          <Button onClick={() => setDetailsOpen(false)} color="inherit">
             Fechar
           </Button>
+          <Box sx={{ flex: 1 }} />
 
           {selectedReservation && selectedReservation.status === 'SOLICITADA' && (
-            <Box sx={{ display: 'flex', gap: 1 }}>
+            <>
               <Button
                 variant="outlined"
                 color="error"
@@ -1002,53 +1402,134 @@ export default function EstReservations() {
                   handleOpenCancel(selectedReservation);
                 }}
                 disabled={actionLoading}
-                sx={{ borderRadius: '8px', textTransform: 'none', fontWeight: 600 }}
               >
-                Recusar Reserva
+                Recusar reserva
               </Button>
               <Button
                 variant="contained"
                 onClick={() => {
                   setDetailsOpen(false);
-                  handleConfirmReservation(selectedReservation.id);
+                  handleRequestConfirm(selectedReservation);
                 }}
                 disabled={actionLoading}
-                sx={{
-                  borderRadius: '8px',
-                  textTransform: 'none',
-                  fontWeight: 600,
-                  background: 'linear-gradient(135deg, #0097A7, #00BCD4)',
-                }}
               >
-                Confirmar Reserva
+                Confirmar reserva
               </Button>
-            </Box>
+            </>
           )}
 
-          {selectedReservation && 
-            (selectedReservation.status === 'CONFIRMADA' || selectedReservation.status === 'AGUARDANDO_PAGAMENTO') && 
+          {selectedReservation &&
+            (selectedReservation.status === 'CONFIRMADA' ||
+              selectedReservation.status === 'AGUARDANDO_PAGAMENTO') &&
             !isMpEstabelecimento &&
             detailedPayment?.comprovanteUrl && (
               <Button
                 variant="contained"
                 color="success"
-                onClick={() => handleConfirmPayment(selectedReservation)}
+                onClick={handleRequestFinalize}
                 disabled={actionLoading}
-                sx={{
-                  borderRadius: '8px',
-                  textTransform: 'none',
-                  fontWeight: 600,
-                  bgcolor: 'success.main',
-                  '&:hover': {
-                    bgcolor: 'success.dark',
-                  }
-                }}
               >
-                {actionLoading ? 'Finalizando...' : 'Aprovar Pagamento e Finalizar'}
+                Aprovar pagamento e finalizar
               </Button>
             )}
         </DialogActions>
       </Dialog>
-    </Box>
+
+      {/* Confirmação de reserva */}
+      <ConfirmDialog
+        open={confirmOpen}
+        title="Confirmar reserva"
+        description={
+          <>
+            A reserva <strong>{reservationToConfirm?.codigoReserva}</strong> de{' '}
+            <strong>{reservationToConfirm?.hospede?.nome}</strong> será confirmada e o hóspede
+            notificado para realizar o pagamento.
+          </>
+        }
+        confirmLabel="Confirmar reserva"
+        cancelLabel="Voltar"
+        loading={actionLoading}
+        onConfirm={handleSubmitConfirm}
+        onClose={() => setConfirmOpen(false)}
+      >
+        {reservationToConfirm && (
+          <Box sx={{ mt: 2 }}>
+            <InfoGrid columns={2}>
+              <InfoItem
+                label="Período"
+                value={`${formatDate(reservationToConfirm.checkIn)} a ${formatDate(
+                  reservationToConfirm.checkOut,
+                )}`}
+              />
+              <InfoItem label="Valor total" value={formatCurrency(reservationToConfirm.valorTotal)} />
+            </InfoGrid>
+          </Box>
+        )}
+      </ConfirmDialog>
+
+      {/* Aprovar pagamento e finalizar */}
+      <ConfirmDialog
+        open={finalizeOpen}
+        title="Aprovar pagamento e finalizar"
+        description={
+          <>
+            O pagamento da reserva <strong>{reservationToFinalize?.codigoReserva}</strong> será
+            aprovado e a reserva finalizada. Confirme que o comprovante foi conferido.
+          </>
+        }
+        confirmLabel="Aprovar e finalizar"
+        cancelLabel="Voltar"
+        loading={actionLoading}
+        onConfirm={handleSubmitFinalize}
+        onClose={() => setFinalizeOpen(false)}
+      >
+        {reservationToFinalize && detailedPayment && (
+          <Box sx={{ mt: 2 }}>
+            <InfoGrid columns={2}>
+              <InfoItem label="Forma de pagamento" value={paymentMethodLabel(detailedPayment.metodo)} />
+              <InfoItem label="Valor" value={formatCurrency(detailedPayment.valor)} emphasis />
+            </InfoGrid>
+          </Box>
+        )}
+      </ConfirmDialog>
+
+      {/* Cancelamento com justificativa obrigatória */}
+      <ConfirmDialog
+        open={cancelOpen}
+        title="Cancelar reserva"
+        tone="error"
+        confirmLabel="Cancelar reserva"
+        cancelLabel="Voltar"
+        loading={actionLoading}
+        onConfirm={handleConfirmCancel}
+        onClose={() => setCancelOpen(false)}
+        description={
+          <>
+            Informe o motivo do cancelamento da reserva{' '}
+            <strong>{reservationToCancel?.codigoReserva}</strong>. O hóspede será notificado por
+            e-mail.
+          </>
+        }
+      >
+        <Box sx={{ mt: 2 }}>
+          <FormError message={cancelError ? 'O motivo do cancelamento é obrigatório.' : undefined} />
+          <TextField
+            label="Motivo do cancelamento"
+            fullWidth
+            required
+            multiline
+            minRows={3}
+            disabled={actionLoading}
+            value={cancelReason}
+            onChange={(e) => {
+              setCancelReason(e.target.value);
+              if (cancelError) setCancelError(false);
+            }}
+            placeholder="Ex: não identificamos o pagamento no prazo estabelecido."
+            error={cancelError}
+          />
+        </Box>
+      </ConfirmDialog>
+    </PageContainer>
   );
 }

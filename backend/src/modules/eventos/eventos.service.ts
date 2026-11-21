@@ -1,6 +1,18 @@
-﻿import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { CreateEventDto } from './dto/evento.dto';
+
+/** Include padrão de Evento: cidades e fotos (galeria + capa), sempre em ordem de exibição. */
+const EVENTO_INCLUDE = {
+  eventosCidades: { include: { cidade: true } },
+  // A lista de eventos é pública: expõe só o necessário para renderizar a mídia,
+  // sem `s3Key` (mesmo critério do include de fotos em estabelecimentos).
+  fotos: {
+    select: { id: true, url: true, isCapa: true, ordem: true },
+    orderBy: { ordem: 'asc' },
+  },
+} satisfies Prisma.EventoInclude;
 
 @Injectable()
 export class EventsService {
@@ -13,7 +25,7 @@ export class EventsService {
         ...data,
         eventosCidades: cityIds ? { create: cityIds.map(cidadeId => ({ cidadeId })) } : undefined,
       },
-      include: { eventosCidades: { include: { cidade: true } } },
+      include: EVENTO_INCLUDE,
     });
   }
 
@@ -22,7 +34,7 @@ export class EventsService {
     if (upcoming) where.dataFim = { gte: new Date() };
     return this.prisma.evento.findMany({
       where,
-      include: { eventosCidades: { include: { cidade: true } } },
+      include: EVENTO_INCLUDE,
       orderBy: { dataInicio: 'asc' },
     });
   }
@@ -30,7 +42,7 @@ export class EventsService {
   async findByCity(cidadeId: string) {
     return this.prisma.evento.findMany({
       where: { ativo: true, eventosCidades: { some: { cidadeId } }, dataFim: { gte: new Date() } },
-      include: { eventosCidades: { include: { cidade: true } } },
+      include: EVENTO_INCLUDE,
       orderBy: { dataInicio: 'asc' },
     });
   }
@@ -38,7 +50,7 @@ export class EventsService {
   async findOne(id: string) {
     const evento = await this.prisma.evento.findUnique({
       where: { id },
-      include: { eventosCidades: { include: { cidade: true } } },
+      include: EVENTO_INCLUDE,
     });
     if (!evento) throw new NotFoundException('Evento nao encontrado');
     return evento;
@@ -53,7 +65,7 @@ export class EventsService {
         ...data,
         eventosCidades: cityIds ? { deleteMany: {}, create: cityIds.map(cidadeId => ({ cidadeId })) } : undefined,
       },
-      include: { eventosCidades: { include: { cidade: true } } },
+      include: EVENTO_INCLUDE,
     });
   }
 

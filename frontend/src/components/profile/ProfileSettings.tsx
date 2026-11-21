@@ -2,7 +2,6 @@ import { useRef, useState } from 'react';
 import {
   Box,
   Typography,
-  Paper,
   TextField,
   Button,
   Grid,
@@ -13,6 +12,8 @@ import {
   CircularProgress,
   Tooltip,
   Badge,
+  Divider,
+  useTheme,
 } from '@mui/material';
 import {
   Visibility,
@@ -23,9 +24,12 @@ import {
   Phone,
   Security,
   PhotoCamera,
+  CheckCircleOutlined,
 } from '@mui/icons-material';
 import { useAuthStore } from '../../stores/authStore';
 import { usersApi } from '../../services/api';
+import { PageContainer, PageHeader, SectionCard, FormActions, toneColor, toneSurface } from '../common';
+import type { Tone } from '../../theme/tokens';
 import toast from 'react-hot-toast';
 
 interface ProfileSettingsProps {
@@ -36,9 +40,83 @@ interface ProfileSettingsProps {
   allowEditContact?: boolean;
 }
 
-export default function ProfileSettings({ fotoPerfil, estabelecimentoNome, onFotoPerfilChange, uploadingFoto, allowEditContact }: ProfileSettingsProps) {
+const roleConfig: Record<string, { label: string; tone: Tone }> = {
+  ADMIN: { label: 'Administrador / Gestor', tone: 'info' },
+  ESTABLISHMENT: { label: 'Estabelecimento', tone: 'secondary' },
+  GUEST: { label: 'Hóspede', tone: 'primary' },
+};
+
+/** Campo de senha com rótulo visível, autocomplete e alternância de visibilidade. */
+function PasswordField({
+  label,
+  value,
+  onChange,
+  visible,
+  onToggleVisible,
+  disabled,
+  autoComplete,
+  placeholder,
+  helperText,
+  required,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  visible: boolean;
+  onToggleVisible: () => void;
+  disabled?: boolean;
+  autoComplete?: string;
+  placeholder?: string;
+  helperText?: string;
+  required?: boolean;
+}) {
+  return (
+    <TextField
+      label={label}
+      type={visible ? 'text' : 'password'}
+      fullWidth
+      required={required}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      disabled={disabled}
+      helperText={helperText}
+      autoComplete={autoComplete}
+      slotProps={{
+        input: {
+          startAdornment: (
+            <InputAdornment position="start">
+              <Lock sx={{ color: 'text.secondary', fontSize: 20 }} />
+            </InputAdornment>
+          ),
+          endAdornment: (
+            <InputAdornment position="end">
+              <IconButton
+                onClick={onToggleVisible}
+                edge="end"
+                aria-label={visible ? `Ocultar ${label.toLowerCase()}` : `Mostrar ${label.toLowerCase()}`}
+                size="small"
+              >
+                {visible ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
+              </IconButton>
+            </InputAdornment>
+          ),
+        },
+      }}
+    />
+  );
+}
+
+export default function ProfileSettings({
+  fotoPerfil,
+  estabelecimentoNome,
+  onFotoPerfilChange,
+  uploadingFoto,
+  allowEditContact,
+}: ProfileSettingsProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { user, setUser } = useAuthStore();
+  const theme = useTheme();
   const [loading, setLoading] = useState(false);
 
   // Form states
@@ -51,7 +129,6 @@ export default function ProfileSettings({ fotoPerfil, estabelecimentoNome, onFot
   const [showNovaSenha, setShowNovaSenha] = useState(false);
   const [showConfirmarSenha, setShowConfirmarSenha] = useState(false);
 
-  // Contact editing states
   const formatPhone = (value: string) => {
     const digits = value.replace(/\D/g, '').slice(0, 11);
     if (digits.length <= 2) return digits.length ? `(${digits}` : '';
@@ -71,7 +148,7 @@ export default function ProfileSettings({ fotoPerfil, estabelecimentoNome, onFot
       const raw = editTelefone.replace(/\D/g, '');
       await usersApi.updateMe({ telefone: raw || undefined });
       setUser({ ...user, telefone: raw || undefined });
-      toast.success('Contato atualizado com sucesso!');
+      toast.success('Contato atualizado com sucesso.');
     } catch (error: any) {
       console.error(error);
       const msg = error.response?.data?.message || 'Erro ao atualizar contato.';
@@ -81,14 +158,8 @@ export default function ProfileSettings({ fotoPerfil, estabelecimentoNome, onFot
     }
   };
 
-  // Role details configuration
-  const roleConfig = {
-    ADMIN: { label: 'Administrador / Gestor', color: '#7C3AED' },
-    ESTABLISHMENT: { label: 'Estabelecimento', color: '#FF7043' },
-    GUEST: { label: 'Hóspede', color: '#0097A7' },
-  };
-
-  const currentRole = user?.role ? (roleConfig[user.role as keyof typeof roleConfig] || { label: user.role, color: '#666' }) : { label: 'Usuário', color: '#666' };
+  const currentRole =
+    (user?.role && roleConfig[user.role]) || { label: user?.role ?? 'Usuário', tone: 'neutral' as Tone };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -111,145 +182,141 @@ export default function ProfileSettings({ fotoPerfil, estabelecimentoNome, onFot
     try {
       setLoading(true);
       await usersApi.changePassword({ senhaAtual, novaSenha });
-      toast.success('Senha alterada com sucesso! 🎉');
-      
-      // Clear fields
+      toast.success('Senha alterada com sucesso.');
+
       setSenhaAtual('');
       setNovaSenha('');
       setConfirmarSenha('');
     } catch (error: any) {
       console.error(error);
-      const msg = error.response?.data?.message || 'Erro ao alterar a senha. Verifique os dados inseridos.';
+      const msg =
+        error.response?.data?.message || 'Erro ao alterar a senha. Verifique os dados inseridos.';
       toast.error(msg);
     } finally {
       setLoading(false);
     }
   };
 
+  const displayName = estabelecimentoNome || user?.nome || '';
+  const initials = displayName ? displayName.charAt(0).toUpperCase() : '';
+
   return (
-    <Box sx={{ maxWidth: 1000, margin: '0 auto', p: { xs: 2, md: 4 } }}>
-      <Typography variant="h4" sx={{ fontFamily: '"Outfit", sans-serif', fontWeight: 800, mb: 1 }}>
-        Configurações do Meu Perfil
-      </Typography>
-      <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>
-        Gerencie as informações da sua conta e altere sua senha de acesso ao sistema.
-      </Typography>
+    <PageContainer maxWidth="reading">
+      <PageHeader
+        overline="Conta"
+        title="Meu perfil"
+        subtitle="Gerencie as informações da sua conta e altere sua senha de acesso ao sistema."
+      />
 
-      <Grid container spacing={4}>
-        {/* Left Column: Profile Card */}
+      <Grid container spacing={3}>
+        {/* Coluna esquerda: identidade + contato */}
         <Grid size={{ xs: 12, md: 5 }}>
-          <Paper
-            elevation={0}
-            sx={(t) => ({
-              p: 4,
-              borderRadius: '24px',
-              border: '1px solid',
-              borderColor: 'divider',
-              boxShadow: '0 8px 32px 0 rgba(0,0,0,0.02)',
-              background: t.palette.mode === 'dark'
-                ? 'linear-gradient(135deg, rgba(30,41,59,0.9), rgba(30,41,59,0.95))'
-                : 'linear-gradient(135deg, rgba(255,255,255,0.9), rgba(255,255,255,0.95))',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              textAlign: 'center',
-            })}
-          >
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/jpeg,image/jpg,image/png,image/webp"
-              hidden
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                if (!['image/jpeg', 'image/jpg', 'image/png', 'image/webp'].includes(file.type)) {
-                  toast.error('Formato não suportado. Use JPG, JPEG, PNG ou WebP.');
-                  return;
-                }
-                onFotoPerfilChange?.(file);
-                e.target.value = '';
-              }}
-            />
-            <Tooltip title={onFotoPerfilChange ? 'Clique para alterar a foto de perfil' : ''}>
-              <Badge
-                overlap="circular"
-                anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-                badgeContent={
-                  onFotoPerfilChange && (
-                    <Avatar
-                      sx={{
-                        width: 30,
-                        height: 30,
-                        bgcolor: 'primary.main',
-                        cursor: 'pointer',
-                      }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        fileInputRef.current?.click();
-                      }}
-                    >
-                      {uploadingFoto ? <CircularProgress size={16} sx={{ color: 'white' }} /> : <PhotoCamera sx={{ fontSize: 16 }} />}
-                    </Avatar>
-                  )
-                }
-              >
-                <Avatar
-                  onClick={() => {
-                    if (onFotoPerfilChange && !uploadingFoto) {
-                      fileInputRef.current?.click();
-                    }
-                  }}
-                  src={fotoPerfil || undefined}
-                  sx={{
-                    width: 90,
-                    height: 90,
-                    mb: 2,
-                    fontSize: '2rem',
-                    fontWeight: 700,
-                    color: 'white',
-                    cursor: onFotoPerfilChange ? 'pointer' : 'default',
-                    background: fotoPerfil ? undefined : `linear-gradient(135deg, ${currentRole.color}, #9C27B0)`,
-                    boxShadow: `0 8px 20px 0 ${currentRole.color}25`,
-                    transition: 'opacity 0.2s',
-                    '&:hover': onFotoPerfilChange ? { opacity: 0.85 } : undefined,
-                  }}
+          <SectionCard title="Identidade" subtitle="Dados do titular da conta">
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/jpg,image/png,image/webp"
+                hidden
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  if (!['image/jpeg', 'image/jpg', 'image/png', 'image/webp'].includes(file.type)) {
+                    toast.error('Formato não suportado. Use JPG, JPEG, PNG ou WebP.');
+                    return;
+                  }
+                  onFotoPerfilChange?.(file);
+                  e.target.value = '';
+                }}
+              />
+
+              <Tooltip title={onFotoPerfilChange ? 'Alterar foto de perfil' : ''}>
+                <Badge
+                  overlap="circular"
+                  anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                  badgeContent={
+                    onFotoPerfilChange ? (
+                      <Avatar
+                        role="button"
+                        aria-label="Alterar foto de perfil"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          fileInputRef.current?.click();
+                        }}
+                        sx={{
+                          width: 32,
+                          height: 32,
+                          bgcolor: 'primary.main',
+                          color: 'primary.contrastText',
+                          cursor: 'pointer',
+                          border: '2px solid',
+                          borderColor: 'background.paper',
+                          '&:hover': { bgcolor: 'primary.dark' },
+                        }}
+                      >
+                        {uploadingFoto ? (
+                          <CircularProgress size={14} sx={{ color: 'inherit' }} />
+                        ) : (
+                          <PhotoCamera sx={{ fontSize: 16 }} />
+                        )}
+                      </Avatar>
+                    ) : null
+                  }
                 >
-                  {!fotoPerfil && (estabelecimentoNome
-                    ? estabelecimentoNome.charAt(0).toUpperCase()
-                    : user?.nome
-                      ? user.nome.charAt(0).toUpperCase()
-                      : <Person />
-                  )}
-                </Avatar>
-              </Badge>
-            </Tooltip>
+                  <Avatar
+                    onClick={() => {
+                      if (onFotoPerfilChange && !uploadingFoto) fileInputRef.current?.click();
+                    }}
+                    src={fotoPerfil || undefined}
+                    alt={displayName ? `Foto de perfil de ${displayName}` : 'Foto de perfil'}
+                    sx={{
+                      width: 88,
+                      height: 88,
+                      fontSize: '1.875rem',
+                      fontWeight: 700,
+                      color: 'primary.contrastText',
+                      cursor: onFotoPerfilChange ? 'pointer' : 'default',
+                      bgcolor: fotoPerfil ? 'transparent' : 'primary.main',
+                      border: '3px solid',
+                      borderColor: 'background.paper',
+                      boxShadow: '0 4px 16px rgba(15,23,42,0.12)',
+                      transition: 'opacity 120ms',
+                      '&:hover': onFotoPerfilChange ? { opacity: 0.9 } : undefined,
+                    }}
+                  >
+                    {fotoPerfil ? null : initials || <Person />}
+                  </Avatar>
+                </Badge>
+              </Tooltip>
 
-            <Typography variant="h5" sx={{ fontWeight: 700, mb: 1, fontFamily: '"Outfit", sans-serif' }}>
-              {user?.nome}
-            </Typography>
+              <Typography variant="h5" sx={{ mt: 2, fontWeight: 700 }}>
+                {displayName || 'Usuário'}
+              </Typography>
 
-            <Chip
-              label={currentRole.label}
-              size="medium"
-              sx={{
-                fontWeight: 600,
-                color: currentRole.color,
-                bgcolor: `${currentRole.color}15`,
-                border: '1px solid',
-                borderColor: `${currentRole.color}30`,
-                mb: 4,
-              }}
-            />
+              <Chip
+                label={currentRole.label}
+                size="medium"
+                sx={{
+                  mt: 1,
+                  fontWeight: 600,
+                  color: toneColor(theme, currentRole.tone),
+                  bgcolor: toneSurface(theme, currentRole.tone),
+                  border: '1px solid',
+                  borderColor: toneSurface(theme, currentRole.tone),
+                }}
+              />
+            </Box>
 
-            <Box sx={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 2.5 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, textAlign: 'left' }}>
-                <Avatar sx={(t) => ({ bgcolor: t.palette.mode === 'dark' ? 'rgba(38,198,218,0.15)' : 'rgba(0,151,167,0.06)', color: t.palette.mode === 'dark' ? '#26C6DA' : '#0097A7', width: 40, height: 40 })}>
+            <Divider sx={{ my: 3 }} />
+
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.75 }}>
+                <Avatar sx={{ width: 38, height: 38, bgcolor: 'action.hover', color: 'text.secondary' }}>
                   <Email fontSize="small" />
                 </Avatar>
-                <Box sx={{ flex: 1, overflow: 'hidden' }}>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontWeight: 500, mb: 0.5 }}>
-                    E-mail do Login
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Typography variant="caption" color="textSecondary" sx={{ display: 'block', fontWeight: 600 }}>
+                    E-mail de acesso
                   </Typography>
                   <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>
                     {user?.email}
@@ -257,13 +324,13 @@ export default function ProfileSettings({ fotoPerfil, estabelecimentoNome, onFot
                 </Box>
               </Box>
 
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, textAlign: 'left' }}>
-                <Avatar sx={(t) => ({ bgcolor: t.palette.mode === 'dark' ? 'rgba(255,138,101,0.15)' : 'rgba(255,112,67,0.06)', color: t.palette.mode === 'dark' ? '#FF8A65' : '#FF7043', width: 40, height: 40 })}>
+              <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.75 }}>
+                <Avatar sx={{ width: 38, height: 38, bgcolor: 'action.hover', color: 'text.secondary' }}>
                   <Phone fontSize="small" />
                 </Avatar>
-                <Box sx={{ flex: 1, overflow: 'hidden' }}>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontWeight: 500, mb: 0.5 }}>
-                    Contato / Celular
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Typography variant="caption" color="textSecondary" sx={{ display: 'block', fontWeight: 600, mb: 0.5 }}>
+                    Contato / celular
                   </Typography>
                   {allowEditContact ? (
                     <TextField
@@ -274,7 +341,8 @@ export default function ProfileSettings({ fotoPerfil, estabelecimentoNome, onFot
                       placeholder="(84) 9 9999-9999"
                       disabled={savingContact}
                       inputMode="numeric"
-                      slotProps={{ input: { sx: { fontSize: '0.875rem', fontWeight: 600 } } }}
+                      autoComplete="tel-national"
+                      slotProps={{ htmlInput: { 'aria-label': 'Telefone de contato' } }}
                     />
                   ) : (
                     <Typography variant="body2" sx={{ fontWeight: 600 }}>
@@ -290,148 +358,83 @@ export default function ProfileSettings({ fotoPerfil, estabelecimentoNome, onFot
                   onClick={handleSaveContact}
                   disabled={savingContact}
                   fullWidth
-                  sx={{
-                    mt: 1,
-                    borderRadius: '10px',
-                    textTransform: 'none',
-                    fontWeight: 600,
-                    py: 1,
-                    background: 'linear-gradient(135deg, #0097A7, #00BCD4)',
-                    boxShadow: '0 4px 14px 0 rgba(0, 151, 167, 0.3)',
-                  }}
+                  startIcon={!savingContact ? <CheckCircleOutlined /> : undefined}
                 >
-                  {savingContact ? <CircularProgress size={20} sx={{ color: 'white' }} /> : 'Salvar Contato'}
+                  {savingContact ? <CircularProgress size={20} sx={{ color: 'inherit' }} /> : 'Salvar contato'}
                 </Button>
               )}
             </Box>
-          </Paper>
+          </SectionCard>
         </Grid>
 
-        {/* Right Column: Change Password Card */}
+        {/* Coluna direita: segurança */}
         <Grid size={{ xs: 12, md: 7 }}>
-          <Paper
-            elevation={0}
-            component="form"
-            onSubmit={handleSubmit}
-            sx={{
-              p: 4,
-              borderRadius: '24px',
-              border: '1px solid',
-              borderColor: 'divider',
-              boxShadow: '0 8px 32px 0 rgba(0,0,0,0.02)',
-            }}
-          >
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3.5 }}>
-              <Avatar sx={{ bgcolor: 'primary.light', color: 'primary.main', width: 36, height: 36 }}>
-                <Security fontSize="small" />
-              </Avatar>
-              <Typography variant="h6" sx={{ fontWeight: 700, fontFamily: '"Outfit", sans-serif' }}>
-                Alteração de Senha
-              </Typography>
-            </Box>
-
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-              <TextField
-                label="Senha Atual"
-                type={showSenhaAtual ? 'text' : 'password'}
-                fullWidth
-                required
-                value={senhaAtual}
-                onChange={(e) => setSenhaAtual(e.target.value)}
-                placeholder="Insira sua senha atual"
-                disabled={loading}
-                slotProps={{
-                  input: {
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <Lock sx={{ color: 'text.secondary', opacity: 0.7 }} />
-                      </InputAdornment>
-                    ),
-                    endAdornment: (
-                      <InputAdornment position="end">
-                        <IconButton onClick={() => setShowSenhaAtual(!showSenhaAtual)} edge="end">
-                          {showSenhaAtual ? <VisibilityOff /> : <Visibility />}
-                        </IconButton>
-                      </InputAdornment>
-                    ),
-                  }
-                }}
-              />
-
-              <TextField
-                label="Nova Senha"
-                type={showNovaSenha ? 'text' : 'password'}
-                fullWidth
-                required
-                value={novaSenha}
-                onChange={(e) => setNovaSenha(e.target.value)}
-                placeholder="Mínimo 6 caracteres"
-                disabled={loading}
-                slotProps={{
-                  input: {
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <Lock sx={{ color: 'text.secondary', opacity: 0.7 }} />
-                      </InputAdornment>
-                    ),
-                    endAdornment: (
-                      <InputAdornment position="end">
-                        <IconButton onClick={() => setShowNovaSenha(!showNovaSenha)} edge="end">
-                          {showNovaSenha ? <VisibilityOff /> : <Visibility />}
-                        </IconButton>
-                      </InputAdornment>
-                    ),
-                  }
-                }}
-              />
-
-              <TextField
-                label="Confirmar Nova Senha"
-                type={showConfirmarSenha ? 'text' : 'password'}
-                fullWidth
-                required
-                value={confirmarSenha}
-                onChange={(e) => setConfirmarSenha(e.target.value)}
-                placeholder="Repita a nova senha"
-                disabled={loading}
-                slotProps={{
-                  input: {
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <Lock sx={{ color: 'text.secondary', opacity: 0.7 }} />
-                      </InputAdornment>
-                    ),
-                    endAdornment: (
-                      <InputAdornment position="end">
-                        <IconButton onClick={() => setShowConfirmarSenha(!showConfirmarSenha)} edge="end">
-                          {showConfirmarSenha ? <VisibilityOff /> : <Visibility />}
-                        </IconButton>
-                      </InputAdornment>
-                    ),
-                  }
-                }}
-              />
-
-              <Button
-                variant="contained"
-                type="submit"
-                disabled={loading}
+          <SectionCard
+            title="Alterar senha"
+            subtitle="A nova senha precisa ter no mínimo 6 caracteres."
+            action={
+              <Box
                 sx={{
-                  mt: 1,
-                  borderRadius: '12px',
-                  textTransform: 'none',
-                  fontWeight: 600,
-                  py: 1.5,
-                  background: 'linear-gradient(135deg, #0097A7, #00BCD4)',
-                  boxShadow: '0 4px 14px 0 rgba(0, 151, 167, 0.3)',
+                  width: 34,
+                  height: 34,
+                  borderRadius: 2,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  bgcolor: 'action.selected',
+                  color: 'primary.main',
                 }}
               >
-                {loading ? <CircularProgress size={24} sx={{ color: 'white' }} /> : 'Salvar Alterações'}
-              </Button>
+                <Security fontSize="small" />
+              </Box>
+            }
+          >
+            <Box component="form" onSubmit={handleSubmit} noValidate>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+                <PasswordField
+                  label="Senha atual"
+                  value={senhaAtual}
+                  onChange={setSenhaAtual}
+                  visible={showSenhaAtual}
+                  onToggleVisible={() => setShowSenhaAtual((v) => !v)}
+                  disabled={loading}
+                  autoComplete="current-password"
+                  required
+                />
+
+                <PasswordField
+                  label="Nova senha"
+                  value={novaSenha}
+                  onChange={setNovaSenha}
+                  visible={showNovaSenha}
+                  onToggleVisible={() => setShowNovaSenha((v) => !v)}
+                  disabled={loading}
+                  autoComplete="new-password"
+                  helperText="Mínimo de 6 caracteres"
+                  required
+                />
+
+                <PasswordField
+                  label="Confirmar nova senha"
+                  value={confirmarSenha}
+                  onChange={setConfirmarSenha}
+                  visible={showConfirmarSenha}
+                  onToggleVisible={() => setShowConfirmarSenha((v) => !v)}
+                  disabled={loading}
+                  autoComplete="new-password"
+                  required
+                />
+
+                <FormActions sx={{ mt: 1 }}>
+                  <Button variant="contained" type="submit" disabled={loading} startIcon={!loading ? <Lock /> : undefined}>
+                    {loading ? <CircularProgress size={22} sx={{ color: 'inherit' }} /> : 'Salvar alterações'}
+                  </Button>
+                </FormActions>
+              </Box>
             </Box>
-          </Paper>
+          </SectionCard>
         </Grid>
       </Grid>
-    </Box>
+    </PageContainer>
   );
 }

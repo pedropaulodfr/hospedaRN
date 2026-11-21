@@ -1,41 +1,68 @@
 import { useEffect, useState } from 'react';
 import {
+  Alert,
+  Avatar,
   Box,
-  Typography,
-  Paper,
   Button,
+  Checkbox,
+  Chip,
+  CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Divider,
+  FormControl,
+  IconButton,
+  InputLabel,
+  ListItemText,
+  MenuItem,
+  OutlinedInput,
+  Select,
+  Stack,
+  Switch,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-  IconButton,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
   TextField,
-  Switch,
-  CircularProgress,
+  ToggleButton,
+  ToggleButtonGroup,
   Tooltip,
-  Tabs,
-  Tab,
-  Chip,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  Select,
-  Stack,
-  Checkbox,
-  ListItemText,
-  OutlinedInput,
-  Divider,
-  Grid,
-  DialogContentText,
-  Avatar,
+  Typography,
 } from '@mui/material';
-import { Add, Visibility, Delete, Refresh, Business, WarningAmber, Edit } from '@mui/icons-material';
+import { alpha } from '@mui/material/styles';
+import {
+  Add,
+  Business,
+  Delete,
+  Edit,
+  PhotoCamera,
+  Refresh,
+  Visibility,
+} from '@mui/icons-material';
+import {
+  ConfirmDialog,
+  DataToolbar,
+  DataToolbarGroup,
+  EmptySearchIcon,
+  EmptyState,
+  ErrorState,
+  FormGrid,
+  FormSection,
+  FormSpan,
+  InfoGrid,
+  InfoItem,
+  ModoPagamentoChip,
+  PageContainer,
+  PageHeader,
+  SearchField,
+  SectionCard,
+  StatusChip,
+  TableSkeleton,
+} from '../../components/common';
 import { establishmentsApi, citiesApi, amenitiesApi, uploadsApi } from '../../services/api';
 import toast from 'react-hot-toast';
 
@@ -73,11 +100,21 @@ const getPhotoUrl = (filename?: string) => {
   return `https://hospedarn-bucket.s3.us-east-2.amazonaws.com/estabelecimentos/${filename}`;
 };
 
+const coordinates = (est: Establishment) => {
+  if (est.latitude == null || est.longitude == null) return 'Não informadas';
+  return `${est.latitude}, ${est.longitude}`;
+};
+
 export default function AdminEstablishments() {
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [establishments, setEstablishments] = useState<Establishment[]>([]);
   const [cities, setCities] = useState<City[]>([]);
   const [amenities, setAmenities] = useState<Amenity[]>([]);
+
+  // Busca e filtros locais (a aba recarrega via API)
+  const [search, setSearch] = useState('');
+  const [cityFilter, setCityFilter] = useState('all');
 
   // Filtering tabs: 0 = Todos, 1 = Inativos
   const [activeTab, setActiveTab] = useState(0);
@@ -119,14 +156,15 @@ export default function AdminEstablishments() {
       ]);
       setCities(citiesRes.data.data || []);
       setAmenities(amenitiesRes.data.data || []);
-    } catch (error) {
-      console.error('Erro ao carregar cidades/comodidades:', error);
+    } catch (err) {
+      console.error('Erro ao carregar cidades/comodidades:', err);
     }
   };
 
   const fetchEstablishments = async () => {
     try {
       setLoading(true);
+      setError(false);
       const params: any = { adminView: true };
 
       // Map tabs to query parameters
@@ -136,8 +174,9 @@ export default function AdminEstablishments() {
 
       const res = await establishmentsApi.getAll(params);
       setEstablishments(res.data?.data?.data || res.data?.data || res.data || []);
-    } catch (error) {
-      console.error(error);
+    } catch (err) {
+      console.error(err);
+      setError(true);
       toast.error('Erro ao carregar estabelecimentos');
     } finally {
       setLoading(false);
@@ -184,7 +223,7 @@ export default function AdminEstablishments() {
     setLatitude(est.latitude ? est.latitude.toString() : '');
     setLongitude(est.longitude ? est.longitude.toString() : '');
     setCidadeId(est.cidade?.id || '');
-    setSelectedAmenityIds(est.comodidades.map(c => c.comodidade.id));
+    setSelectedAmenityIds(est.comodidades.map((c) => c.comodidade.id));
     setModoPagamento(est.modoPagamento || 'PADRAO');
     setFotoPerfil(est.fotoPerfil || '');
     setOpenAddDialog(true);
@@ -206,8 +245,8 @@ export default function AdminEstablishments() {
       const filename = s3Key.split('/').pop() || '';
       setFotoPerfil(filename);
       toast.success('Foto de perfil enviada com sucesso!');
-    } catch (error) {
-      console.error(error);
+    } catch (err) {
+      console.error(err);
       toast.error('Erro ao fazer upload da foto de perfil');
     } finally {
       setUploadingImage(false);
@@ -247,9 +286,11 @@ export default function AdminEstablishments() {
       }
       setOpenAddDialog(false);
       fetchEstablishments();
-    } catch (error: any) {
-      console.error(error);
-      const msg = error.response?.data?.message || (isEditMode ? 'Erro ao atualizar' : 'Erro ao cadastrar estabelecimento');
+    } catch (err: any) {
+      console.error(err);
+      const msg =
+        err.response?.data?.message ||
+        (isEditMode ? 'Erro ao atualizar' : 'Erro ao cadastrar estabelecimento');
       toast.error(msg);
     } finally {
       setSaving(false);
@@ -261,8 +302,8 @@ export default function AdminEstablishments() {
       await establishmentsApi.toggleActive(est.id);
       toast.success(`Estabelecimento ${!est.ativo ? 'ativado' : 'bloqueado'} com sucesso`);
       fetchEstablishments();
-    } catch (error) {
-      console.error(error);
+    } catch (err) {
+      console.error(err);
       toast.error('Erro ao alterar status do estabelecimento');
     }
   };
@@ -281,9 +322,9 @@ export default function AdminEstablishments() {
       setConfirmDeleteOpen(false);
       setEstToDelete(null);
       fetchEstablishments();
-    } catch (error: any) {
-      console.error(error);
-      const msg = error.response?.data?.message || 'Erro ao excluir estabelecimento';
+    } catch (err: any) {
+      console.error(err);
+      const msg = err.response?.data?.message || 'Erro ao excluir estabelecimento';
       toast.error(msg);
     } finally {
       setDeleting(false);
@@ -295,554 +336,615 @@ export default function AdminEstablishments() {
     setEstToDelete(null);
   };
 
+  const term = search.trim().toLowerCase();
+  const cityOptions = Array.from(
+    new Map(
+      establishments
+        .filter((est) => est.cidade?.id)
+        .map((est) => [est.cidade.id, est.cidade.nome] as const),
+    ).entries(),
+  ).sort((a, b) => a[1].localeCompare(b[1], 'pt-BR'));
+
+  const filteredEstablishments = establishments.filter((est) => {
+    const matchesCity = cityFilter === 'all' || est.cidade?.id === cityFilter;
+    if (!matchesCity) return false;
+    if (!term) return true;
+    return (
+      est.nome.toLowerCase().includes(term) ||
+      (est.cidade?.nome || '').toLowerCase().includes(term) ||
+      (est.proprietario?.nome || '').toLowerCase().includes(term) ||
+      (est.proprietario?.email || '').toLowerCase().includes(term) ||
+      (est.emailContato || '').toLowerCase().includes(term)
+    );
+  });
+
   return (
-    <Box sx={{ p: 4, maxWidth: 1400, margin: '0 auto' }}>
-      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
-        <Box>
-          <Typography variant="h4" sx={{ fontFamily: '"Outfit", sans-serif', fontWeight: 800, mb: 0.5 }}>
-            Estabelecimentos Cadastrados
-          </Typography>
-          <Typography variant="body1" color="text.secondary">
-            Ativação, gerenciamento e exclusão de hospedagens parceiras.
-          </Typography>
-        </Box>
-        <Stack direction="row" spacing={2}>
-          <Button
-            variant="outlined"
-            onClick={fetchEstablishments}
-            startIcon={<Refresh />}
-            sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 600 }}
-          >
-            Atualizar
-          </Button>
-          <Button
-            variant="contained"
-            startIcon={<Add />}
-            onClick={handleOpenAdd}
-            sx={{
-              borderRadius: '10px',
-              textTransform: 'none',
-              fontWeight: 600,
-              background: 'linear-gradient(135deg, #0097A7, #00BCD4)',
-              boxShadow: '0 4px 14px 0 rgba(0, 151, 167, 0.3)',
-            }}
-          >
-            Novo Estabelecimento
-          </Button>
-        </Stack>
-      </Box>
+    <PageContainer maxWidth="wide">
+      <PageHeader
+        overline="Catálogo"
+        title="Estabelecimentos"
+        subtitle="Ativação, gerenciamento e exclusão das hospedagens parceiras da plataforma."
+        icon={<Business />}
+        actions={
+          <>
+            <Button
+              variant="outlined"
+              startIcon={<Refresh />}
+              onClick={fetchEstablishments}
+              disabled={loading}
+            >
+              Atualizar
+            </Button>
+            <Button variant="contained" startIcon={<Add />} onClick={handleOpenAdd}>
+              Novo estabelecimento
+            </Button>
+          </>
+        }
+      />
 
-      {/* Tabs Filter */}
-      <Paper sx={{ mb: 3, borderRadius: '12px', overflow: 'hidden' }} elevation={0} variant="outlined">
-        <Tabs
+      <DataToolbar>
+        <DataToolbarGroup>
+          <SearchField
+            value={search}
+            onChange={setSearch}
+            placeholder="Buscar por nome, cidade ou proprietário"
+            width={340}
+          />
+          <TextField
+            select
+            size="small"
+            label="Cidade"
+            value={cityFilter}
+            onChange={(e) => setCityFilter(e.target.value)}
+            sx={{ minWidth: 180, maxWidth: 240 }}
+          >
+            <MenuItem value="all">Todas as cidades</MenuItem>
+            {cityOptions.map(([id, nome]) => (
+              <MenuItem key={id} value={id}>
+                {nome}
+              </MenuItem>
+            ))}
+          </TextField>
+        </DataToolbarGroup>
+        <ToggleButtonGroup
+          size="small"
+          exclusive
           value={activeTab}
-          onChange={(_, val) => setActiveTab(val)}
-          indicatorColor="primary"
-          textColor="primary"
-          variant="scrollable"
-          scrollButtons="auto"
-        >
-          <Tab label="Todos" sx={{ fontWeight: 600, px: 3 }} />
-          <Tab label="Inativos" sx={{ fontWeight: 600, px: 3 }} />
-        </Tabs>
-      </Paper>
-
-      {loading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-          <CircularProgress />
-        </Box>
-      ) : (
-        <Paper
-          sx={{
-            borderRadius: '20px',
-            border: '1px solid',
-            borderColor: 'divider',
-            boxShadow: '0 8px 32px 0 rgba(0,0,0,0.02)',
-            overflow: 'hidden',
+          onChange={(_, value) => {
+            if (value !== null) setActiveTab(value);
           }}
+          aria-label="Filtrar estabelecimentos por status"
         >
-          <TableContainer>
-            <Table>
-              <TableHead sx={{ bgcolor: 'rgba(0,0,0,0.02)' }}>
+          <ToggleButton value={0} aria-label="Mostrar todos os estabelecimentos">
+            Todos
+          </ToggleButton>
+          <ToggleButton value={1} aria-label="Mostrar apenas estabelecimentos inativos">
+            Inativos
+          </ToggleButton>
+        </ToggleButtonGroup>
+      </DataToolbar>
+
+      <SectionCard noPadding>
+        {loading ? (
+          <Box sx={{ p: 2.5 }}>
+            <TableSkeleton rows={7} columns={6} />
+          </Box>
+        ) : error ? (
+          <ErrorState
+            title="Não foi possível carregar os estabelecimentos"
+            description="Ocorreu uma falha ao buscar os estabelecimentos cadastrados."
+            onRetry={fetchEstablishments}
+          />
+        ) : establishments.length === 0 ? (
+          <EmptyState
+            icon={<Business />}
+            title={
+              activeTab === 1
+                ? 'Nenhum estabelecimento inativo'
+                : 'Nenhum estabelecimento cadastrado'
+            }
+            description={
+              activeTab === 1
+                ? 'Todos os estabelecimentos da plataforma estão ativos no momento.'
+                : 'Cadastre a primeira hospedagem parceira para começar a receber reservas.'
+            }
+            action={
+              activeTab === 0 ? (
+                <Button variant="contained" startIcon={<Add />} onClick={handleOpenAdd}>
+                  Novo estabelecimento
+                </Button>
+              ) : (
+                <Button variant="outlined" onClick={() => setActiveTab(0)}>
+                  Ver todos
+                </Button>
+              )
+            }
+          />
+        ) : filteredEstablishments.length === 0 ? (
+          <EmptyState
+            icon={EmptySearchIcon}
+            title="Nenhum estabelecimento encontrado"
+            description="Ajuste a busca ou o filtro de cidade para encontrar o estabelecimento desejado."
+            action={
+              <Button
+                variant="outlined"
+                onClick={() => {
+                  setSearch('');
+                  setCityFilter('all');
+                }}
+              >
+                Limpar filtros
+              </Button>
+            }
+          />
+        ) : (
+          <TableContainer sx={{ overflowX: 'auto' }}>
+            <Table sx={{ minWidth: 960 }}>
+              <TableHead>
                 <TableRow>
-                  <TableCell sx={{ fontWeight: 600 }}>Nome</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Cidade</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>E-mail de Contato</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Proprietário</TableCell>
-                  <TableCell align="center" sx={{ fontWeight: 600 }}>Pagamento</TableCell>
-                  <TableCell align="center" sx={{ fontWeight: 600 }}>Ativo</TableCell>
-                  <TableCell align="center" sx={{ fontWeight: 600 }}>Ações</TableCell>
+                  <TableCell>Estabelecimento</TableCell>
+                  <TableCell>Cidade</TableCell>
+                  <TableCell>Proprietário</TableCell>
+                  <TableCell>Pagamento</TableCell>
+                  <TableCell>Status</TableCell>
+                  <TableCell align="right">Ações</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {establishments.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={7} align="center" sx={{ py: 6, color: 'text.secondary' }}>
-                      Nenhum estabelecimento encontrado nesta categoria.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  establishments.map((est) => (
-                    <TableRow key={est.id} hover>
-                      <TableCell sx={{ fontWeight: 600 }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                          <Avatar
-                            src={getPhotoUrl(est.fotoPerfil)}
-                            sx={{ width: 32, height: 32, bgcolor: 'rgba(0,151,167,0.08)' }}
-                          >
-                            <Business sx={{ fontSize: 18, color: 'primary.main' }} />
-                          </Avatar>
-                          {est.nome}
-                        </Box>
-                      </TableCell>
-                      <TableCell>{est.cidade?.nome || 'N/A'}</TableCell>
-                      <TableCell>{est.emailContato || 'Não cadastrado'}</TableCell>
-                      <TableCell>
-                        {est.proprietario ? (
-                          <Box>
-                            <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                              {est.proprietario.nome}
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary">
-                              {est.proprietario.email}
-                            </Typography>
-                          </Box>
-                        ) : (
-                          <Typography variant="caption" color="error">
-                            Sem proprietário
+                {filteredEstablishments.map((est) => (
+                  <TableRow key={est.id} hover>
+                    <TableCell>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                        <Avatar
+                          src={getPhotoUrl(est.fotoPerfil)}
+                          alt={`Foto de ${est.nome}`}
+                          variant="rounded"
+                          sx={{ width: 38, height: 38, fontSize: '0.875rem' }}
+                        >
+                          <Business sx={{ fontSize: 20 }} />
+                        </Avatar>
+                        <Box sx={{ minWidth: 0 }}>
+                          <Typography variant="subtitle2" sx={{ fontWeight: 600 }} noWrap>
+                            {est.nome}
                           </Typography>
-                        )}
-                      </TableCell>
-                      <TableCell align="center">
-                        <Chip
-                          size="small"
-                          label={est.modoPagamento === 'MERCADO_PAGO' ? 'Mercado Pago' : 'Padrão'}
-                          color={est.modoPagamento === 'MERCADO_PAGO' ? 'primary' : 'default'}
-                          variant={est.modoPagamento === 'MERCADO_PAGO' ? 'filled' : 'outlined'}
-                          sx={{ fontWeight: 600 }}
-                        />
-                      </TableCell>
-                      <TableCell align="center">
+                          <Typography variant="caption" color="textSecondary" noWrap>
+                            {est.emailContato || 'E-mail de contato não cadastrado'}
+                          </Typography>
+                        </Box>
+                      </Box>
+                    </TableCell>
+                    <TableCell>{est.cidade?.nome || '—'}</TableCell>
+                    <TableCell>
+                      {est.proprietario ? (
+                        <Box sx={{ minWidth: 0 }}>
+                          <Typography variant="body2" sx={{ fontWeight: 500 }} noWrap>
+                            {est.proprietario.nome}
+                          </Typography>
+                          <Typography variant="caption" color="textSecondary" noWrap>
+                            {est.proprietario.email}
+                          </Typography>
+                        </Box>
+                      ) : (
+                        <Typography variant="caption" color="error">
+                          Sem proprietário
+                        </Typography>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <ModoPagamentoChip modo={est.modoPagamento || 'PADRAO'} />
+                    </TableCell>
+                    <TableCell>
+                      <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                        <StatusChip status={est.ativo ? 'ATIVO' : 'INATIVO'} />
                         <Switch
+                          size="small"
                           checked={est.ativo}
                           onChange={() => handleToggleActive(est)}
                           color="primary"
+                          slotProps={{
+                            input: {
+                              'aria-label': `${est.ativo ? 'Bloquear' : 'Ativar'} estabelecimento ${est.nome}`,
+                            },
+                          }}
                         />
-                      </TableCell>
-                      <TableCell align="center">
-                        <Stack direction="row" spacing={0.5} sx={{ justifyContent: 'center' }}>
-                          <Tooltip title="Editar">
-                            <IconButton onClick={() => handleOpenEdit(est)} color="secondary" size="small">
-                              <Edit fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Detalhes">
-                            <IconButton onClick={() => handleOpenDetails(est)} color="primary" size="small">
-                              <Visibility fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Excluir">
-                            <IconButton onClick={() => handleDeleteClick(est)} color="error" size="small">
-                              <Delete fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                        </Stack>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
+                      </Stack>
+                    </TableCell>
+                    <TableCell align="right">
+                      <Stack direction="row" spacing={0.5} sx={{ justifyContent: 'flex-end' }}>
+                        <Tooltip title="Editar">
+                          <IconButton
+                            size="small"
+                            aria-label={`Editar estabelecimento ${est.nome}`}
+                            onClick={() => handleOpenEdit(est)}
+                          >
+                            <Edit fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Detalhes">
+                          <IconButton
+                            size="small"
+                            aria-label={`Ver detalhes de ${est.nome}`}
+                            onClick={() => handleOpenDetails(est)}
+                          >
+                            <Visibility fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Excluir">
+                          <IconButton
+                            size="small"
+                            color="error"
+                            aria-label={`Excluir estabelecimento ${est.nome}`}
+                            onClick={() => handleDeleteClick(est)}
+                          >
+                            <Delete fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </Stack>
+                    </TableCell>
+                  </TableRow>
+                ))}
               </TableBody>
             </Table>
           </TableContainer>
-        </Paper>
-      )}
+        )}
+      </SectionCard>
 
-      {/* Add Establishment Dialog */}
+      {/* Diálogo de cadastro/edição */}
       <Dialog
         open={openAddDialog}
         onClose={() => setOpenAddDialog(false)}
         maxWidth="md"
         fullWidth
-        sx={{ '& .MuiDialog-paper': { borderRadius: '16px' } }}
       >
-        <DialogTitle sx={{ fontFamily: '"Outfit", sans-serif', fontWeight: 700 }}>
-          {isEditMode ? 'Editar Estabelecimento' : 'Cadastrar Novo Estabelecimento'}
+        <DialogTitle>
+          {isEditMode ? 'Editar estabelecimento' : 'Cadastrar estabelecimento'}
         </DialogTitle>
-        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, pt: 3 }}>
+        <DialogContent>
           {!isEditMode && (
-            <Typography variant="caption" color="primary.main" sx={{ fontWeight: 600 }}>
-              * Ao salvar, a conta do proprietário será criada de forma automatizada se ainda não existir no sistema, vinculada ao E-mail de Contato.
-            </Typography>
+            <Alert severity="info" sx={{ mb: 2.5 }}>
+              Ao salvar, a conta do proprietário será criada automaticamente se ainda não existir,
+              vinculada ao e-mail de contato informado.
+            </Alert>
           )}
 
-          <Grid container spacing={2} key={editEstId || 'new'} sx={{ mt: 0 }}>
-            {/* Foto de Perfil */}
-            <Grid size={{ xs: 12 }} sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5, mb: 2 }}>
-              <Box sx={{ position: 'relative' }}>
-                <Avatar
-                  src={getPhotoUrl(fotoPerfil)}
-                  sx={{ width: 100, height: 100, border: '2px solid', borderColor: 'primary.main', bgcolor: 'rgba(0,151,167,0.08)' }}
-                >
-                  <Business sx={{ fontSize: 50, color: 'primary.main' }} />
-                </Avatar>
-                {uploadingImage && (
-                  <Box
-                    sx={{
-                      position: 'absolute',
-                      inset: 0,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      bgcolor: 'rgba(255,255,255,0.7)',
-                      borderRadius: '50%',
-                    }}
+          <Box key={editEstId || 'new'}>
+            <FormSection title="Identificação">
+              <Stack spacing={1.5} sx={{ alignItems: 'center' }}>
+                <Box sx={{ position: 'relative' }}>
+                  <Avatar
+                    src={getPhotoUrl(fotoPerfil)}
+                    alt={nome ? `Foto de ${nome}` : 'Prévia da foto do estabelecimento'}
+                    variant="rounded"
+                    sx={{ width: 96, height: 96, fontSize: '2rem' }}
                   >
-                    <CircularProgress size={24} />
-                  </Box>
-                )}
-              </Box>
-              <Stack direction="row" spacing={1}>
-                <Button
-                  variant="outlined"
-                  component="label"
-                  size="small"
-                  disabled={uploadingImage}
-                  sx={{ textTransform: 'none', borderRadius: '8px' }}
-                >
-                  {fotoPerfil ? 'Alterar Foto' : 'Adicionar Foto'}
-                  <input type="file" accept="image/*" hidden onChange={handlePhotoUpload} />
-                </Button>
-                {fotoPerfil && (
-                  <Button
-                    variant="text"
-                    color="error"
-                    size="small"
-                    onClick={() => setFotoPerfil('')}
-                    sx={{ textTransform: 'none' }}
-                  >
-                    Remover
-                  </Button>
-                )}
-              </Stack>
-            </Grid>
-
-            <Grid size={{ xs: 12, md: 6 }}>
-              <TextField
-                label="Nome do Estabelecimento"
-                fullWidth
-                required
-                value={nome}
-                onChange={(e) => setNome(e.target.value)}
-              />
-            </Grid>
-            <Grid size={{ xs: 12, md: 6 }}>
-              <TextField
-                label="E-mail de Contato (Login do Proprietário)"
-                type="email"
-                fullWidth
-                required
-                value={emailContato}
-                onChange={(e) => setEmailContato(e.target.value)}
-              />
-            </Grid>
-
-            <Grid size={{ xs: 12, md: 6 }}>
-              <TextField
-                label="Telefone / Contato"
-                fullWidth
-                value={contato}
-                onChange={(e) => setContato(e.target.value)}
-                placeholder="Ex: 84999999999"
-              />
-            </Grid>
-            <Grid size={{ xs: 12, md: 6 }}>
-              <TextField
-                label="Website (opcional)"
-                fullWidth
-                value={website}
-                onChange={(e) => setWebsite(e.target.value)}
-              />
-            </Grid>
-
-            <Grid size={{ xs: 12, md: 8 }}>
-              <TextField
-                label="Endereço Completo"
-                fullWidth
-                value={endereco}
-                onChange={(e) => setEndereco(e.target.value)}
-              />
-            </Grid>
-            <Grid size={{ xs: 12, md: 4 }}>
-              <TextField
-                label="CEP"
-                fullWidth
-                value={cep}
-                onChange={(e) => setCep(e.target.value)}
-              />
-            </Grid>
-
-            <Grid size={{ xs: 12, md: 4 }}>
-              <TextField
-                label="Latitude (opcional)"
-                type="number"
-                fullWidth
-                value={latitude}
-                onChange={(e) => setLatitude(e.target.value)}
-              />
-            </Grid>
-            <Grid size={{ xs: 12, md: 4 }}>
-              <TextField
-                label="Longitude (opcional)"
-                type="number"
-                fullWidth
-                value={longitude}
-                onChange={(e) => setLongitude(e.target.value)}
-              />
-            </Grid>
-            <Grid size={{ xs: 12, md: 4 }}>
-              <FormControl fullWidth required>
-                <InputLabel>Cidade</InputLabel>
-                <Select
-                  value={cidadeId}
-                  onChange={(e) => setCidadeId(e.target.value)}
-                  label="Cidade"
-                >
-                  {cities.map((city) => (
-                    <MenuItem key={city.id} value={city.id}>
-                      {city.nome}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-
-            <Grid size={{ xs: 12 }}>
-              <TextField
-                label="Descrição"
-                multiline
-                rows={3}
-                fullWidth
-                value={descricao}
-                onChange={(e) => setDescricao(e.target.value)}
-              />
-            </Grid>
-
-            {/* Modo de Pagamento */}
-            <Grid size={{ xs: 12 }}>
-              <FormControl fullWidth>
-                <InputLabel>Modo de Pagamento</InputLabel>
-                <Select
-                  value={modoPagamento}
-                  onChange={(e) => setModoPagamento(e.target.value as 'PADRAO' | 'MERCADO_PAGO')}
-                  label="Modo de Pagamento"
-                >
-                  <MenuItem value="PADRAO">Padrão (comprovante manual)</MenuItem>
-                  <MenuItem value="MERCADO_PAGO">Mercado Pago (reconhecimento automático)</MenuItem>
-                </Select>
-                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
-                  Em "Mercado Pago" o hóspede paga via PIX, boleto ou cartão e a reserva é finalizada automaticamente após a aprovação.
-                </Typography>
-              </FormControl>
-            </Grid>
-
-            {/* Amenities Select */}
-            <Grid size={{ xs: 12 }}>
-              <FormControl fullWidth>
-                <InputLabel>Comodidades / Vantagens Globais</InputLabel>
-                <Select
-                  multiple
-                  value={selectedAmenityIds}
-                  onChange={(e) => setSelectedAmenityIds(e.target.value as string[])}
-                  input={<OutlinedInput label="Comodidades / Vantagens Globais" />}
-                  renderValue={(selected) => (
-                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                      {selected.map((value) => {
-                        const amenity = amenities.find((a) => a.id === value);
-                        return <Chip key={value} label={amenity?.nome || value} size="small" />;
-                      })}
+                    <Business sx={{ fontSize: 44 }} />
+                  </Avatar>
+                  {uploadingImage && (
+                    <Box
+                      sx={{
+                        position: 'absolute',
+                        inset: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        borderRadius: 3,
+                        bgcolor: (t) => alpha(t.palette.background.paper, 0.72),
+                      }}
+                    >
+                      <CircularProgress size={24} />
                     </Box>
                   )}
-                >
-                  {amenities.map((amenity) => (
-                    <MenuItem key={amenity.id} value={amenity.id}>
-                      <Checkbox checked={selectedAmenityIds.indexOf(amenity.id) > -1} />
-                      <ListItemText primary={amenity.nome} />
+                </Box>
+                <Stack direction="row" spacing={1}>
+                  <Button
+                    component="label"
+                    variant="outlined"
+                    size="small"
+                    startIcon={<PhotoCamera />}
+                    disabled={uploadingImage}
+                  >
+                    {fotoPerfil ? 'Alterar foto' : 'Adicionar foto'}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      hidden
+                      aria-label="Selecionar foto do estabelecimento"
+                      onChange={handlePhotoUpload}
+                    />
+                  </Button>
+                  {fotoPerfil && (
+                    <Button
+                      variant="text"
+                      color="error"
+                      size="small"
+                      onClick={() => setFotoPerfil('')}
+                    >
+                      Remover
+                    </Button>
+                  )}
+                </Stack>
+              </Stack>
+
+              <FormGrid columns={2}>
+                <TextField
+                  label="Nome do estabelecimento"
+                  fullWidth
+                  required
+                  value={nome}
+                  onChange={(e) => setNome(e.target.value)}
+                />
+                <TextField
+                  label="E-mail de contato (login do proprietário)"
+                  type="email"
+                  fullWidth
+                  required
+                  value={emailContato}
+                  onChange={(e) => setEmailContato(e.target.value)}
+                />
+                <TextField
+                  label="Telefone / contato"
+                  fullWidth
+                  value={contato}
+                  onChange={(e) => setContato(e.target.value)}
+                  placeholder="Ex: 84999999999"
+                />
+                <TextField
+                  label="Website (opcional)"
+                  fullWidth
+                  value={website}
+                  onChange={(e) => setWebsite(e.target.value)}
+                />
+                <FormSpan span={2}>
+                  <TextField
+                    label="Descrição"
+                    multiline
+                    rows={3}
+                    fullWidth
+                    value={descricao}
+                    onChange={(e) => setDescricao(e.target.value)}
+                  />
+                </FormSpan>
+              </FormGrid>
+            </FormSection>
+
+            <Divider sx={{ my: 2.5 }} />
+
+            <FormSection
+              title="Endereço e localização"
+              description="A cidade define em quais buscas o estabelecimento aparece."
+            >
+              <FormGrid columns={2}>
+                <FormSpan span={2}>
+                  <TextField
+                    label="Endereço completo"
+                    fullWidth
+                    value={endereco}
+                    onChange={(e) => setEndereco(e.target.value)}
+                  />
+                </FormSpan>
+                <TextField
+                  label="CEP"
+                  fullWidth
+                  value={cep}
+                  onChange={(e) => setCep(e.target.value)}
+                />
+                <FormControl fullWidth required>
+                  <InputLabel>Cidade</InputLabel>
+                  <Select
+                    value={cidadeId}
+                    onChange={(e) => setCidadeId(e.target.value)}
+                    label="Cidade"
+                  >
+                    {cities.map((city) => (
+                      <MenuItem key={city.id} value={city.id}>
+                        {city.nome}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <TextField
+                  label="Latitude (opcional)"
+                  type="number"
+                  fullWidth
+                  value={latitude}
+                  onChange={(e) => setLatitude(e.target.value)}
+                />
+                <TextField
+                  label="Longitude (opcional)"
+                  type="number"
+                  fullWidth
+                  value={longitude}
+                  onChange={(e) => setLongitude(e.target.value)}
+                />
+              </FormGrid>
+            </FormSection>
+
+            <Divider sx={{ my: 2.5 }} />
+
+            <FormSection
+              title="Pagamento e comodidades"
+              description="O modo de pagamento vale para novas reservas; reservas existentes mantêm o modo da criação."
+            >
+              <FormGrid columns={1}>
+                <FormControl fullWidth>
+                  <InputLabel>Modo de pagamento</InputLabel>
+                  <Select
+                    value={modoPagamento}
+                    onChange={(e) => setModoPagamento(e.target.value as 'PADRAO' | 'MERCADO_PAGO')}
+                    label="Modo de pagamento"
+                  >
+                    <MenuItem value="PADRAO">Padrão (comprovante manual)</MenuItem>
+                    <MenuItem value="MERCADO_PAGO">
+                      Mercado Pago (reconhecimento automático)
                     </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-          </Grid>
+                  </Select>
+                </FormControl>
+                <Typography variant="caption" color="textSecondary">
+                  Em &quot;Mercado Pago&quot; o hóspede paga via PIX, boleto ou cartão e a reserva é
+                  finalizada automaticamente após a aprovação.
+                </Typography>
+                <FormControl fullWidth>
+                  <InputLabel>Comodidades e vantagens globais</InputLabel>
+                  <Select
+                    multiple
+                    value={selectedAmenityIds}
+                    onChange={(e) => setSelectedAmenityIds(e.target.value as string[])}
+                    input={<OutlinedInput label="Comodidades e vantagens globais" />}
+                    renderValue={(selected) => (
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                        {selected.map((value) => {
+                          const amenity = amenities.find((a) => a.id === value);
+                          return (
+                            <Chip key={value} label={amenity?.nome || value} size="small" />
+                          );
+                        })}
+                      </Box>
+                    )}
+                  >
+                    {amenities.map((amenity) => (
+                      <MenuItem key={amenity.id} value={amenity.id}>
+                        <Checkbox checked={selectedAmenityIds.indexOf(amenity.id) > -1} />
+                        <ListItemText primary={amenity.nome} />
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </FormGrid>
+            </FormSection>
+          </Box>
         </DialogContent>
-        <DialogActions sx={{ p: 2.5 }}>
-          <Button onClick={() => setOpenAddDialog(false)} disabled={saving} sx={{ textTransform: 'none', fontWeight: 600 }}>
+        <DialogActions>
+          <Button color="inherit" onClick={() => setOpenAddDialog(false)} disabled={saving}>
             Cancelar
           </Button>
-          <Button
-            variant="contained"
-            onClick={handleSubmit}
-            disabled={saving}
-            sx={{
-              borderRadius: '8px',
-              textTransform: 'none',
-              fontWeight: 600,
-              background: 'linear-gradient(135deg, #0097A7, #00BCD4)',
-            }}
-          >
-            {saving ? <CircularProgress size={24} color="inherit" /> : (isEditMode ? 'Salvar Alterações' : 'Cadastrar Estabelecimento')}
+          <Button variant="contained" onClick={handleSubmit} loading={saving}>
+            {isEditMode ? 'Salvar alterações' : 'Cadastrar estabelecimento'}
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Detail Establishment Dialog */}
+      {/* Diálogo de detalhes */}
       <Dialog
         open={openDetailDialog}
         onClose={() => setOpenDetailDialog(false)}
         maxWidth="sm"
         fullWidth
-        sx={{ '& .MuiDialog-paper': { borderRadius: '16px' } }}
       >
-        <DialogTitle sx={{ fontFamily: '"Outfit", sans-serif', fontWeight: 700 }}>
-          Detalhes do Estabelecimento
-        </DialogTitle>
-        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+        <DialogTitle>Detalhes do estabelecimento</DialogTitle>
+        <DialogContent>
           {selectedEst && (
-            <Stack spacing={2}>
-              {selectedEst.fotoPerfil && (
-                <Box sx={{ display: 'flex', justifyContent: 'center', mb: 1 }}>
-                  <Avatar
-                    src={getPhotoUrl(selectedEst.fotoPerfil)}
-                    variant="rounded"
-                    sx={{ width: 120, height: 120, border: '1px solid', borderColor: 'divider' }}
-                  />
+            <Stack spacing={2.5}>
+              <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
+                <Avatar
+                  src={getPhotoUrl(selectedEst.fotoPerfil)}
+                  alt={`Foto de ${selectedEst.nome}`}
+                  variant="rounded"
+                  sx={{ width: 64, height: 64, fontSize: '1.5rem' }}
+                >
+                  <Business sx={{ fontSize: 28 }} />
+                </Avatar>
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography variant="h6" sx={{ fontWeight: 600 }} noWrap>
+                    {selectedEst.nome}
+                  </Typography>
+                  <Stack direction="row" spacing={1} sx={{ mt: 0.5, flexWrap: 'wrap' }}>
+                    <StatusChip status={selectedEst.ativo ? 'ATIVO' : 'INATIVO'} />
+                    <ModoPagamentoChip modo={selectedEst.modoPagamento || 'PADRAO'} />
+                  </Stack>
                 </Box>
-              )}
-              <Box>
-                <Typography variant="caption" color="text.secondary">Nome do Estabelecimento</Typography>
-                <Typography variant="body1" sx={{ fontWeight: 600 }}>{selectedEst.nome}</Typography>
-              </Box>
-
-              <Box>
-                <Typography variant="caption" color="text.secondary">Cidade Vinculada</Typography>
-                <Typography variant="body1">{selectedEst.cidade?.nome}</Typography>
-              </Box>
-
-              <Box>
-                <Typography variant="caption" color="text.secondary">Modo de Pagamento</Typography>
-                <Chip
-                  size="small"
-                  label={selectedEst.modoPagamento === 'MERCADO_PAGO' ? 'Mercado Pago' : 'Padrão (comprovante)'}
-                  color={selectedEst.modoPagamento === 'MERCADO_PAGO' ? 'primary' : 'default'}
-                  sx={{ mt: 0.5 }}
-                />
-              </Box>
+              </Stack>
 
               {selectedEst.descricao && (
-                <Box>
-                  <Typography variant="caption" color="text.secondary">Descrição</Typography>
-                  <Typography variant="body2">{selectedEst.descricao}</Typography>
-                </Box>
+                <Typography variant="body2" color="textSecondary">
+                  {selectedEst.descricao}
+                </Typography>
               )}
 
               <Divider />
 
-              <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'primary.main' }}>
-                Dados de Contato & Acesso
+              <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                Contato e acesso
               </Typography>
-
-              <Grid container spacing={2}>
-                <Grid size={{ xs: 6 }}>
-                  <Typography variant="caption" color="text.secondary">E-mail Comercial</Typography>
-                  <Typography variant="body2">{selectedEst.emailContato || 'Não informado'}</Typography>
-                </Grid>
-                <Grid size={{ xs: 6 }}>
-                  <Typography variant="caption" color="text.secondary">Telefone</Typography>
-                  <Typography variant="body2">{selectedEst.contato || 'Não informado'}</Typography>
-                </Grid>
-                <Grid size={{ xs: 12 }}>
-                  <Typography variant="caption" color="text.secondary">Website</Typography>
-                  <Typography variant="body2">{selectedEst.website || 'Não informado'}</Typography>
-                </Grid>
-              </Grid>
+              <InfoGrid columns={2}>
+                <InfoItem
+                  label="E-mail comercial"
+                  value={selectedEst.emailContato || 'Não informado'}
+                />
+                <InfoItem label="Telefone" value={selectedEst.contato || 'Não informado'} />
+                <InfoItem label="Website" value={selectedEst.website || 'Não informado'} />
+                <InfoItem
+                  label="Proprietário"
+                  value={
+                    selectedEst.proprietario ? (
+                      <>
+                        <Typography component="span" variant="body2" sx={{ fontWeight: 600 }}>
+                          {selectedEst.proprietario.nome}
+                        </Typography>
+                        <Typography component="span" variant="caption" color="textSecondary" sx={{ display: 'block' }}>
+                          {selectedEst.proprietario.email}
+                        </Typography>
+                      </>
+                    ) : (
+                      'Sem proprietário'
+                    )
+                  }
+                />
+              </InfoGrid>
 
               <Divider />
 
-              <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'primary.main' }}>
-                Endereço & Localização
+              <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                Endereço e localização
               </Typography>
-
-              <Box>
-                <Typography variant="caption" color="text.secondary">Endereço</Typography>
-                <Typography variant="body2">{selectedEst.endereco || 'Não informado'}</Typography>
-                <Typography variant="body2" color="text.secondary">CEP: {selectedEst.cep || 'N/A'}</Typography>
-              </Box>
-
-              {selectedEst.latitude && selectedEst.longitude && (
-                <Box>
-                  <Typography variant="caption" color="text.secondary">Coordenadas Geográficas</Typography>
-                  <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
-                    Lat: {selectedEst.latitude} | Lng: {selectedEst.longitude}
-                  </Typography>
-                </Box>
-              )}
+              <InfoGrid columns={2}>
+                <InfoItem label="Cidade" value={selectedEst.cidade?.nome || '—'} />
+                <InfoItem label="CEP" value={selectedEst.cep || 'Não informado'} />
+                <InfoItem label="Endereço" value={selectedEst.endereco || 'Não informado'} />
+                <InfoItem label="Coordenadas" value={coordinates(selectedEst)} />
+              </InfoGrid>
 
               <Divider />
 
-              <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'primary.main' }}>
-                Comodidades Vinculadas
+              <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                Comodidades vinculadas
               </Typography>
-
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                {selectedEst.comodidades.length === 0 ? (
-                  <Typography variant="caption" color="text.secondary">Nenhuma comodidade global cadastrada.</Typography>
-                ) : (
-                  selectedEst.comodidades.map((item) => (
+              {selectedEst.comodidades.length === 0 ? (
+                <Typography variant="body2" color="textSecondary">
+                  Nenhuma comodidade global cadastrada.
+                </Typography>
+              ) : (
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                  {selectedEst.comodidades.map((item) => (
                     <Chip key={item.comodidade.id} label={item.comodidade.nome} size="small" />
-                  ))
-                )}
-              </Box>
+                  ))}
+                </Box>
+              )}
             </Stack>
           )}
         </DialogContent>
-        <DialogActions sx={{ p: 2 }}>
-          <Button onClick={() => setOpenDetailDialog(false)} variant="contained" sx={{ borderRadius: '8px', textTransform: 'none', fontWeight: 600 }}>
+        <DialogActions>
+          <Button variant="contained" onClick={() => setOpenDetailDialog(false)}>
             Fechar
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Delete Confirmation Dialog */}
-      <Dialog
+      {/* Confirmação de exclusão */}
+      <ConfirmDialog
         open={confirmDeleteOpen}
+        title="Excluir estabelecimento"
+        description={
+          <>
+            Deseja excluir o estabelecimento <strong>{estToDelete?.nome}</strong>? Esta ação não
+            pode ser desfeita.
+          </>
+        }
+        confirmLabel="Excluir estabelecimento"
+        loading={deleting}
+        tone="error"
+        onConfirm={handleDeleteConfirm}
         onClose={handleDeleteCancel}
-        maxWidth="xs"
-        fullWidth
-        sx={{ '& .MuiDialog-paper': { borderRadius: '16px' } }}
-      >
-        <DialogTitle sx={{ fontFamily: '"Outfit", sans-serif', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
-          <WarningAmber sx={{ color: 'error.main' }} />
-          Confirmar Exclusão
-        </DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            Deseja realmente excluir o estabelecimento <strong>{estToDelete?.nome}</strong>? Esta ação é irreversível.
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions sx={{ p: 2.5, gap: 1 }}>
-          <Button onClick={handleDeleteCancel} disabled={deleting} sx={{ textTransform: 'none', fontWeight: 600 }}>
-            Cancelar
-          </Button>
-          <Button
-            variant="contained"
-            color="error"
-            onClick={handleDeleteConfirm}
-            disabled={deleting}
-            sx={{ borderRadius: '8px', textTransform: 'none', fontWeight: 600 }}
-          >
-            {deleting ? 'Excluindo...' : 'Sim, Excluir'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </Box>
+      />
+    </PageContainer>
   );
 }

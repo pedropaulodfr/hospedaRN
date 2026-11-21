@@ -74,7 +74,12 @@ export class RoomsService {
     const reservas = await this.prisma.reserva.findMany({
       where: {
         quartoId,
-        status: { in: ['SOLICITADA', 'CONFIRMADA', 'AGUARDANDO_PAGAMENTO'] },
+        // FINALIZADA entra na checagem: no modo Mercado Pago a reserva é
+        // finalizada quando o pagamento é aprovado, e a estadia ainda pode estar
+        // no futuro — sem isso, datas já pagas voltariam a ser vendidas.
+        status: {
+          in: ['SOLICITADA', 'CONFIRMADA', 'AGUARDANDO_PAGAMENTO', 'FINALIZADA'],
+        },
         OR: [
           { checkIn: { lte: checkOut }, checkOut: { gte: checkIn } },
         ],

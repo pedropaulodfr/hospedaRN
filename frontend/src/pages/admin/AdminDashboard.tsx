@@ -1,18 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import {
-  Box,
-  Typography,
-  Grid,
-  Card,
-  CardContent,
-  Paper,
-  Button,
-  IconButton,
-  CircularProgress,
-  Divider,
-  Stack,
-} from '@mui/material';
+import { Link as RouterLink } from 'react-router-dom';
+import { Box, Button, Divider, Stack, Typography } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import {
   People,
   Business,
@@ -22,7 +11,19 @@ import {
   EmojiEvents,
   Add,
   ArrowForward,
+  Refresh,
+  Assessment,
 } from '@mui/icons-material';
+import {
+  PageContainer,
+  PageHeader,
+  SectionCard,
+  StatCard,
+  EmptyState,
+  ErrorState,
+  PageLoading,
+} from '../../components/common';
+import { formatCurrency, formatDate } from '../../theme/tokens';
 import { reportsApi } from '../../services/api';
 import toast from 'react-hot-toast';
 
@@ -33,14 +34,34 @@ interface DashboardStats {
   totalRevenue: number;
 }
 
+interface UpcomingEvent {
+  id: string;
+  nome: string;
+  dataInicio?: string;
+  dataFim?: string;
+}
+
+/** Devolve dia e mês abreviado de uma data ISO, ou `null` quando inválida. */
+function dateBadge(value?: string): { day: string; month: string } | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return {
+    day: String(date.getDate()).padStart(2, '0'),
+    month: new Intl.DateTimeFormat('pt-BR', { month: 'short' }).format(date).replace('.', ''),
+  };
+}
+
 export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [upcomingEvents, setUpcomingEvents] = useState<any[]>([]);
+  const [upcomingEvents, setUpcomingEvents] = useState<UpcomingEvent[]>([]);
 
   const fetchData = async () => {
     try {
       setLoading(true);
+      setError(false);
       const [statsRes, eventsRes] = await Promise.all([
         reportsApi.dashboard(),
         reportsApi.upcomingEvents(),
@@ -48,8 +69,9 @@ export default function AdminDashboard() {
 
       setStats(statsRes.data.data);
       setUpcomingEvents(eventsRes.data.data || []);
-    } catch (error) {
-      console.error(error);
+    } catch (err) {
+      console.error(err);
+      setError(true);
       toast.error('Erro ao carregar dados do dashboard');
     } finally {
       setLoading(false);
@@ -60,229 +82,238 @@ export default function AdminDashboard() {
     fetchData();
   }, []);
 
-  if (loading && !stats) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '80vh' }}>
-        <CircularProgress size={60} sx={{ color: 'primary.main' }} />
-      </Box>
-    );
-  }
-
-  const kpis = [
-    {
-      title: 'Total de Usuários',
-      value: stats?.totalUsers || 0,
-      icon: <People sx={{ fontSize: 32, color: '#7C3AED' }} />,
-      bgColor: 'rgba(124, 58, 237, 0.08)',
-      borderColor: 'rgba(124, 58, 237, 0.2)',
-    },
-    {
-      title: 'Estabelecimentos Ativos',
-      value: stats?.totalEstablishments || 0,
-      icon: <Business sx={{ fontSize: 32, color: '#0097A7' }} />,
-      bgColor: 'rgba(0, 151, 167, 0.08)',
-      borderColor: 'rgba(0, 151, 167, 0.2)',
-    },
-    {
-      title: 'Total de Reservas',
-      value: stats?.totalReservations || 0,
-      icon: <BookOnline sx={{ fontSize: 32, color: '#FF7043' }} />,
-      bgColor: 'rgba(255, 112, 67, 0.08)',
-      borderColor: 'rgba(255, 112, 67, 0.2)',
-    },
-    {
-      title: 'Faturamento Total',
-      value: new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(stats?.totalRevenue || 0),
-      icon: <AttachMoney sx={{ fontSize: 32, color: '#4CAF50' }} />,
-      bgColor: 'rgba(76, 175, 80, 0.08)',
-      borderColor: 'rgba(76, 175, 80, 0.2)',
-    },
-  ];
+  const showInitialLoading = loading && !stats;
+  const showError = error && !stats;
 
   return (
-    <Box sx={{ p: 4, maxWidth: 1400, margin: '0 auto' }}>
-      {/* Title */}
-      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
-        <Box>
-          <Typography variant="h4" sx={{ fontFamily: '"Outfit", sans-serif', fontWeight: 800, color: 'text.primary', mb: 0.5 }}>
-            Painel Geral
-          </Typography>
-          <Typography variant="body1" color="text.secondary">
-            Visão unificada das operações, cidades, eventos e novos estabelecimentos.
-          </Typography>
-        </Box>
-        <Button
-          variant="outlined"
-          onClick={fetchData}
-          sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 600 }}
-        >
-          Atualizar Dados
-        </Button>
-      </Box>
+    <PageContainer maxWidth="content">
+      <PageHeader
+        overline="Administração"
+        title="Painel geral"
+        subtitle="Visão unificada das operações, cidades, eventos e estabelecimentos da plataforma."
+        icon={<Assessment />}
+        actions={
+          <Button
+            variant="outlined"
+            startIcon={<Refresh />}
+            onClick={fetchData}
+            disabled={loading}
+          >
+            Atualizar
+          </Button>
+        }
+      />
 
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        {kpis.map((kpi, index) => (
-          <Grid size={{ xs: 12, sm: 6, md: 3 }} key={index}>
-            <Card
-              sx={{
-                borderRadius: '16px',
-                border: '1px solid',
-                borderColor: kpi.borderColor,
-                bgcolor: 'background.paper',
-                boxShadow: '0 4px 20px 0 rgba(0, 0, 0, 0.03)',
-                transition: 'transform 0.2s ease-in-out',
-                '&:hover': {
-                  transform: 'translateY(-4px)',
-                },
-              }}
-            >
-              <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 3 }}>
-                <Box
-                  sx={{
-                    width: 60,
-                    height: 60,
-                    borderRadius: '12px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    bgcolor: kpi.bgColor,
-                  }}
-                >
-                  {kpi.icon}
-                </Box>
-                <Box>
-                  <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
-                    {kpi.title}
-                  </Typography>
-                  <Typography variant="h5" sx={{ fontWeight: 800, mt: 0.5 }}>
-                    {kpi.value}
-                  </Typography>
-                </Box>
-              </CardContent>
-            </Card>
-          </Grid>
-        ))}
-      </Grid>
-
-      {/* Quick Actions & Events */}
-      <Stack spacing={4}>
-        {/* Quick Actions Card */}
-        <Paper
-          sx={{
-            p: 3,
-            borderRadius: '20px',
-            border: '1px solid',
-            borderColor: 'divider',
-            boxShadow: '0 8px 32px 0 rgba(0,0,0,0.02)',
-          }}
-        >
-          <Typography variant="h6" sx={{ fontFamily: '"Outfit", sans-serif', fontWeight: 700, mb: 2.5 }}>
-            Ações Rápidas
-          </Typography>
-          <Stack spacing={2}>
-            <Button
-              component={Link}
-              to="/admin/estabelecimentos"
-              variant="contained"
-              color="primary"
-              startIcon={<Add />}
-              fullWidth
-              sx={{
-                borderRadius: '12px',
-                textTransform: 'none',
-                fontWeight: 600,
-                height: 46,
-                background: 'linear-gradient(135deg, #0097A7, #00BCD4)',
-                boxShadow: '0 4px 14px 0 rgba(0, 151, 167, 0.3)',
-              }}
-            >
-              Novo Estabelecimento
-            </Button>
-            <Button
-              component={Link}
-              to="/admin/cidades"
-              variant="outlined"
-              color="primary"
-              startIcon={<LocationCity />}
-              fullWidth
-              sx={{ borderRadius: '12px', textTransform: 'none', fontWeight: 600, height: 46 }}
-            >
-              Gerenciar Cidades
-            </Button>
-            <Button
-              component={Link}
-              to="/admin/eventos"
-              variant="outlined"
-              color="secondary"
-              startIcon={<EmojiEvents />}
-              fullWidth
-              sx={{
-                borderRadius: '12px',
-                textTransform: 'none',
-                fontWeight: 600,
-                height: 46,
-                color: '#FF7043',
-                borderColor: '#FF7043',
-                '&:hover': {
-                  borderColor: '#FF5722',
-                  bgcolor: 'rgba(255, 112, 67, 0.04)',
-                },
-              }}
-            >
-              Gerenciar Eventos
-            </Button>
-          </Stack>
-        </Paper>
-
-        {/* Upcoming Events List */}
-        <Paper
-          sx={{
-            p: 3,
-            borderRadius: '20px',
-            border: '1px solid',
-            borderColor: 'divider',
-            boxShadow: '0 8px 32px 0 rgba(0,0,0,0.02)',
-          }}
-        >
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Typography variant="h6" sx={{ fontFamily: '"Outfit", sans-serif', fontWeight: 700 }}>
-              Eventos Próximos
-            </Typography>
-            <IconButton size="small" component={Link} to="/admin/eventos" color="primary">
-              <ArrowForward />
-            </IconButton>
+      {showInitialLoading ? (
+        <PageLoading label="Carregando indicadores…" />
+      ) : showError ? (
+        <ErrorState
+          title="Não foi possível carregar o painel"
+          description="Ocorreu uma falha ao buscar os indicadores e os próximos eventos."
+          onRetry={fetchData}
+        />
+      ) : (
+        <Stack spacing={{ xs: 3, md: 4 }}>
+          <Box
+            sx={{
+              display: 'grid',
+              gap: { xs: 2, sm: 2.5 },
+              gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', lg: 'repeat(4, minmax(0, 1fr))' },
+            }}
+          >
+            <StatCard
+              label="Usuários"
+              value={stats?.totalUsers ?? 0}
+              icon={<People />}
+              tone="primary"
+              hint="Contas cadastradas"
+              loading={loading}
+            />
+            <StatCard
+              label="Estabelecimentos"
+              value={stats?.totalEstablishments ?? 0}
+              icon={<Business />}
+              tone="info"
+              hint="Ativos na plataforma"
+              loading={loading}
+            />
+            <StatCard
+              label="Reservas"
+              value={stats?.totalReservations ?? 0}
+              icon={<BookOnline />}
+              tone="secondary"
+              hint="Total registrado"
+              loading={loading}
+            />
+            <StatCard
+              label="Faturamento"
+              value={formatCurrency(stats?.totalRevenue ?? 0)}
+              icon={<AttachMoney />}
+              tone="success"
+              hint="Receita consolidada"
+              loading={loading}
+            />
           </Box>
-          <Divider sx={{ mb: 2 }} />
 
-          <Stack spacing={2}>
-            {upcomingEvents.length === 0 ? (
-              <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 2 }}>
-                Nenhum evento agendado em breve.
-              </Typography>
-            ) : (
-              upcomingEvents.map((evt) => (
-                <Box
-                  key={evt.id}
-                  sx={{
-                    p: 1.5,
-                    borderRadius: '10px',
-                    bgcolor: 'rgba(0,0,0,0.01)',
-                    borderLeft: '4px solid #FF7043',
-                  }}
+          <Box
+            sx={{
+              display: 'grid',
+              gap: { xs: 3, lg: 3 },
+              gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 5fr) minmax(0, 7fr)' },
+              alignItems: 'start',
+            }}
+          >
+            <SectionCard
+              title="Ações rápidas"
+              subtitle="Atalhos para as tarefas mais frequentes do painel."
+            >
+              <Stack spacing={1.5}>
+                <Button
+                  component={RouterLink}
+                  to="/admin/estabelecimentos"
+                  variant="contained"
+                  startIcon={<Add />}
+                  fullWidth
                 >
-                  <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                    {evt.nome}
+                  Novo estabelecimento
+                </Button>
+                <Button
+                  component={RouterLink}
+                  to="/admin/cidades"
+                  variant="outlined"
+                  startIcon={<LocationCity />}
+                  fullWidth
+                >
+                  Gerenciar cidades
+                </Button>
+                <Button
+                  component={RouterLink}
+                  to="/admin/eventos"
+                  variant="outlined"
+                  color="secondary"
+                  startIcon={<EmojiEvents />}
+                  fullWidth
+                >
+                  Gerenciar eventos
+                </Button>
+                <Button
+                  component={RouterLink}
+                  to="/admin/relatorios"
+                  variant="text"
+                  startIcon={<Assessment />}
+                  endIcon={<ArrowForward />}
+                  fullWidth
+                >
+                  Ver relatórios
+                </Button>
+              </Stack>
+            </SectionCard>
+
+            <SectionCard
+              title="Eventos próximos"
+              subtitle="Agenda regional com as datas de cada evento."
+              action={
+                <Button
+                  component={RouterLink}
+                  to="/admin/eventos"
+                  size="small"
+                  endIcon={<ArrowForward />}
+                >
+                  Ver todos
+                </Button>
+              }
+            >
+              {upcomingEvents.length === 0 ? (
+                <EmptyState
+                  compact
+                  icon={<EmojiEvents />}
+                  title="Nenhum evento agendado"
+                  description="Cadastre eventos regionais para destacá-los na plataforma."
+                  action={
+                    <Button
+                      component={RouterLink}
+                      to="/admin/eventos"
+                      variant="outlined"
+                      size="small"
+                      startIcon={<Add />}
+                    >
+                      Cadastrar evento
+                    </Button>
+                  }
+                />
+              ) : (
+                <Stack spacing={1.5}>
+                  {upcomingEvents.map((evt) => {
+                    const badge = dateBadge(evt.dataInicio);
+                    return (
+                      <Box
+                        key={evt.id}
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 2,
+                          p: 1.5,
+                          borderRadius: 2,
+                          border: '1px solid',
+                          borderColor: 'divider',
+                          bgcolor: 'background.paper',
+                          transition: 'border-color 180ms, background-color 180ms',
+                          '&:hover': {
+                            borderColor: (t) => alpha(t.palette.primary.main, 0.45),
+                            bgcolor: 'action.hover',
+                          },
+                        }}
+                      >
+                        <Box
+                          aria-hidden
+                          sx={{
+                            width: 52,
+                            minWidth: 52,
+                            py: 1,
+                            borderRadius: 2,
+                            textAlign: 'center',
+                            bgcolor: (t) => alpha(t.palette.secondary.main, 0.1),
+                            color: 'secondary.main',
+                          }}
+                        >
+                          <Typography
+                            component="span"
+                            sx={{ display: 'block', fontWeight: 700, fontSize: '1.125rem', lineHeight: 1.1 }}
+                          >
+                            {badge?.day ?? '--'}
+                          </Typography>
+                          <Typography
+                            component="span"
+                            variant="caption"
+                            sx={{ display: 'block', fontWeight: 600, textTransform: 'uppercase' }}
+                          >
+                            {badge?.month ?? '—'}
+                          </Typography>
+                        </Box>
+
+                        <Box sx={{ minWidth: 0, flex: 1 }}>
+                          <Typography variant="subtitle2" noWrap sx={{ fontWeight: 600 }}>
+                            {evt.nome}
+                          </Typography>
+                          <Typography variant="caption" color="textSecondary">
+                            {formatDate(evt.dataInicio)}
+                            {evt.dataFim ? ` até ${formatDate(evt.dataFim)}` : ''}
+                          </Typography>
+                        </Box>
+                      </Box>
+                    );
+                  })}
+                  <Divider />
+                  <Typography variant="caption" color="textSecondary">
+                    {upcomingEvents.length}{' '}
+                    {upcomingEvents.length === 1 ? 'evento programado' : 'eventos programados'}
                   </Typography>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                    {new Date(evt.dataInicio).toLocaleDateString('pt-BR')} até{' '}
-                    {new Date(evt.dataFim).toLocaleDateString('pt-BR')}
-                  </Typography>
-                </Box>
-              ))
-            )}
-          </Stack>
-        </Paper>
-      </Stack>
-    </Box>
+                </Stack>
+              )}
+            </SectionCard>
+          </Box>
+        </Stack>
+      )}
+    </PageContainer>
   );
 }

@@ -2,21 +2,16 @@ import { useEffect, useRef, useState } from 'react';
 import {
   Box,
   Typography,
-  Paper,
   Button,
-  Grid,
+  ButtonBase,
   Card,
   CardContent,
   CardActions,
-  CardMedia,
   IconButton,
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogActions,
-  DialogContentText,
   TextField,
-  CircularProgress,
   Tooltip,
   Select,
   MenuItem,
@@ -33,32 +28,48 @@ import {
   TableRow,
   Switch,
   InputAdornment,
-  Checkbox,
-  FormControlLabel,
-  ImageList,
-  ImageListItem,
-  ImageListItemBar,
   Divider,
+  Stack,
 } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import {
-  Add,
-  Edit,
-  Delete,
-  Hotel,
-  AttachMoney,
-  CalendarMonth,
-  WarningAmber,
-  People,
-  Class,
-  Lock,
-  LockOpen,
-  Settings,
-  GridOn,
-  Info,
-  Image,
-  CloudUpload,
-  Close,
+  AddOutlined,
+  AttachMoneyOutlined,
+  CalendarMonthOutlined,
+  ClassOutlined,
+  CloseOutlined,
+  CloudUploadOutlined,
+  DeleteOutlined,
+  EditOutlined,
+  GridOnOutlined,
+  HotelOutlined,
+  ImageOutlined,
+  InfoOutlined,
+  LockOpenOutlined,
+  LockOutlined,
+  PeopleOutlined,
+  PhotoLibraryOutlined,
+  SettingsOutlined,
+  TuneOutlined,
 } from '@mui/icons-material';
+import {
+  CardGridSkeleton,
+  ConfirmDialog,
+  EmptyState,
+  ErrorState,
+  FormActions,
+  FormGrid,
+  FormSection,
+  FormSpan,
+  InlineLoading,
+  PageContainer,
+  PageHeader,
+  PageLoading,
+  SectionCard,
+  StatCard,
+  StatusChip,
+} from '../../components/common';
+import { formatCurrency } from '../../theme/tokens';
 import { establishmentsApi, roomsApi, accommodationTypesApi, fotosApi, uploadsApi } from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
 import toast from 'react-hot-toast';
@@ -133,6 +144,7 @@ export default function EstRooms() {
   
   const [loading, setLoading] = useState(true);
   const [roomsLoading, setRoomsLoading] = useState(false);
+  const [roomsError, setRoomsError] = useState(false);
   const [saving, setSaving] = useState(false);
 
   // CRUD Room Dialog
@@ -239,10 +251,12 @@ export default function EstRooms() {
   const fetchRooms = async (establishmentId: string) => {
     try {
       setRoomsLoading(true);
+      setRoomsError(false);
       const res = await roomsApi.getByEstablishment(establishmentId);
       setRooms(res.data.data || res.data || []);
     } catch (error) {
       console.error(error);
+      setRoomsError(true);
       toast.error('Erro ao carregar quartos do estabelecimento');
     } finally {
       setRoomsLoading(false);
@@ -592,11 +606,7 @@ export default function EstRooms() {
   };
 
   if (loading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '80vh' }}>
-        <CircularProgress />
-      </Box>
-    );
+    return <PageLoading label="Carregando quartos e acomodações…" />;
   }
 
   // Statistics calculations
@@ -608,409 +618,398 @@ export default function EstRooms() {
   const totalCapacity = rooms.reduce((sum, r) => sum + (r.capacidade * r.quantidade), 0);
 
   return (
-    <Box sx={{ p: 4, maxWidth: 1200, margin: '0 auto' }}>
-      {/* Header Section */}
-      <Box sx={{ mb: 4, display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 2 }}>
-        <Box>
-          <Typography variant="h4" sx={{ fontFamily: '"Outfit", sans-serif', fontWeight: 800, mb: 0.5 }}>
-            Gerenciar Quartos e Acomodações
-          </Typography>
-          <Typography variant="body1" color="text.secondary">
-            Cadastre os quartos, gerencie valores por temporada e bloqueie datas da agenda.
-          </Typography>
-        </Box>
+    <PageContainer maxWidth="wide">
+      <PageHeader
+        overline="Estabelecimento"
+        title="Quartos e acomodações"
+        subtitle="Cadastre quartos, defina a diária base, ajuste preços por temporada e bloqueie datas da agenda."
+        icon={<HotelOutlined />}
+        actions={
+          <>
+            {establishments.length > 1 && (
+              <FormControl size="small" sx={{ minWidth: 220 }}>
+                <InputLabel id="est-select-label">Estabelecimento</InputLabel>
+                <Select
+                  labelId="est-select-label"
+                  value={selectedEstablishment?.id || ''}
+                  label="Estabelecimento"
+                  onChange={(e) => handleEstablishmentChange(e.target.value)}
+                >
+                  {establishments.map((est) => (
+                    <MenuItem key={est.id} value={est.id}>
+                      {est.nome}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            )}
 
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          {establishments.length > 1 && (
-            <FormControl size="small" sx={{ minWidth: 220 }}>
-              <InputLabel id="est-select-label">Estabelecimento</InputLabel>
-              <Select
-                labelId="est-select-label"
-                value={selectedEstablishment?.id || ''}
-                label="Estabelecimento"
-                onChange={(e) => handleEstablishmentChange(e.target.value)}
-                sx={{ borderRadius: '10px' }}
-              >
-                {establishments.map((est) => (
-                  <MenuItem key={est.id} value={est.id}>
-                    {est.nome}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          )}
-
-          <Button
-            variant="contained"
-            startIcon={<Add />}
-            onClick={handleOpenAdd}
-            disabled={!selectedEstablishment}
-            sx={{
-              borderRadius: '10px',
-              textTransform: 'none',
-              fontWeight: 600,
-              background: 'linear-gradient(135deg, #0097A7, #00BCD4)',
-              boxShadow: '0 4px 14px 0 rgba(0, 151, 167, 0.3)',
-              '&:hover': {
-                background: 'linear-gradient(135deg, #00838F, #00ACC1)',
-              },
-            }}
-          >
-            Adicionar Quarto
-          </Button>
-        </Box>
-      </Box>
+            <Button
+              variant="contained"
+              startIcon={<AddOutlined />}
+              onClick={handleOpenAdd}
+              disabled={!selectedEstablishment}
+            >
+              Novo quarto
+            </Button>
+          </>
+        }
+      />
 
       {/* Stats Summary Panel */}
       {selectedEstablishment && (
-        <Grid container spacing={3} sx={{ mb: 4 }}>
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-            <Paper
-              sx={{
-                p: 2.5,
-                borderRadius: '16px',
-                border: '1px solid',
-                borderColor: 'divider',
-                boxShadow: '0 4px 20px 0 rgba(0,0,0,0.02)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 2,
-              }}
-            >
-              <Box sx={{ p: 1.5, bgcolor: 'rgba(0, 151, 167, 0.08)', borderRadius: '12px', color: '#0097A7' }}>
-                <Hotel />
-              </Box>
-              <Box>
-                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
-                  Total de Quartos
-                </Typography>
-                <Typography variant="h5" sx={{ fontWeight: 700 }}>
-                  {totalRoomsCount}
-                </Typography>
-              </Box>
-            </Paper>
-          </Grid>
-
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-            <Paper
-              sx={{
-                p: 2.5,
-                borderRadius: '16px',
-                border: '1px solid',
-                borderColor: 'divider',
-                boxShadow: '0 4px 20px 0 rgba(0,0,0,0.02)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 2,
-              }}
-            >
-              <Box sx={{ p: 1.5, bgcolor: 'rgba(76, 175, 80, 0.08)', borderRadius: '12px', color: '#4CAF50' }}>
-                <GridOn />
-              </Box>
-              <Box>
-                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
-                  Categorias Ativas
-                </Typography>
-                <Typography variant="h5" sx={{ fontWeight: 700 }}>
-                  {activeRoomsCount}
-                </Typography>
-              </Box>
-            </Paper>
-          </Grid>
-
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-            <Paper
-              sx={{
-                p: 2.5,
-                borderRadius: '16px',
-                border: '1px solid',
-                borderColor: 'divider',
-                boxShadow: '0 4px 20px 0 rgba(0,0,0,0.02)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 2,
-              }}
-            >
-              <Box sx={{ p: 1.5, bgcolor: 'rgba(255, 112, 67, 0.08)', borderRadius: '12px', color: '#FF7043' }}>
-                <AttachMoney />
-              </Box>
-              <Box>
-                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
-                  Preço Médio Base
-                </Typography>
-                <Typography variant="h5" sx={{ fontWeight: 700 }}>
-                  R$ {avgPrice}
-                </Typography>
-              </Box>
-            </Paper>
-          </Grid>
-
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-            <Paper
-              sx={{
-                p: 2.5,
-                borderRadius: '16px',
-                border: '1px solid',
-                borderColor: 'divider',
-                boxShadow: '0 4px 20px 0 rgba(0,0,0,0.02)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 2,
-              }}
-            >
-              <Box sx={{ p: 1.5, bgcolor: 'rgba(124, 58, 237, 0.08)', borderRadius: '12px', color: '#7C3AED' }}>
-                <People />
-              </Box>
-              <Box>
-                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
-                  Capacidade Hóspedes
-                </Typography>
-                <Typography variant="h5" sx={{ fontWeight: 700 }}>
-                  {totalCapacity}
-                </Typography>
-              </Box>
-            </Paper>
-          </Grid>
-        </Grid>
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: {
+              xs: '1fr',
+              sm: 'repeat(2, minmax(0, 1fr))',
+              lg: 'repeat(4, minmax(0, 1fr))',
+            },
+            gap: 2.5,
+            mb: { xs: 3, md: 4 },
+          }}
+        >
+          <StatCard
+            label="Quartos"
+            value={totalRoomsCount}
+            icon={<HotelOutlined />}
+            tone="primary"
+            hint={totalRoomsCount === 1 ? '1 unidade no inventário' : `${totalRoomsCount} unidades no inventário`}
+          />
+          <StatCard
+            label="Categorias ativas"
+            value={activeRoomsCount}
+            icon={<GridOnOutlined />}
+            tone="success"
+            hint={rooms.length === 0 ? 'Nenhuma categoria cadastrada' : `de ${rooms.length} cadastradas`}
+          />
+          <StatCard
+            label="Preço médio base"
+            value={formatCurrency(Number(avgPrice))}
+            icon={<AttachMoneyOutlined />}
+            tone="secondary"
+            hint="Diária média das categorias"
+          />
+          <StatCard
+            label="Capacidade total"
+            value={totalCapacity}
+            icon={<PeopleOutlined />}
+            tone="info"
+            hint={totalCapacity === 1 ? '1 hóspede' : `${totalCapacity} hóspedes`}
+          />
+        </Box>
       )}
 
       {/* Main Content Area */}
       {roomsLoading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-          <CircularProgress />
-        </Box>
+        <CardGridSkeleton count={4} height={260} />
+      ) : roomsError ? (
+        <Card>
+          <ErrorState
+            title="Não foi possível carregar os quartos"
+            description="Ocorreu uma falha ao buscar as acomodações do estabelecimento. Tente novamente em instantes."
+            onRetry={() => selectedEstablishment && fetchRooms(selectedEstablishment.id)}
+          />
+        </Card>
       ) : !selectedEstablishment ? (
-        <Paper sx={{ p: 6, borderRadius: '20px', textAlign: 'center', border: '1px dashed', borderColor: 'divider' }}>
-          <Typography color="text.secondary">Nenhum estabelecimento cadastrado ou selecionado.</Typography>
-        </Paper>
+        <Card>
+          <EmptyState
+            title="Nenhum estabelecimento selecionado"
+            description="Não encontramos um estabelecimento vinculado à sua conta. Se você é sub-usuário, confirme o vínculo com o proprietário."
+            icon={<HotelOutlined />}
+          />
+        </Card>
       ) : rooms.length === 0 ? (
-        <Paper sx={{ p: 8, borderRadius: '20px', textAlign: 'center', border: '1px dashed', borderColor: 'divider' }}>
-          <Hotel sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
-          <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
-            Nenhum quarto cadastrado
-          </Typography>
-          <Typography color="text.secondary" sx={{ mb: 3 }}>
-            Cadastre os quartos do seu estabelecimento para começar a receber reservas.
-          </Typography>
-          <Button
-            variant="contained"
-            startIcon={<Add />}
-            onClick={handleOpenAdd}
-            sx={{
-              borderRadius: '10px',
-              textTransform: 'none',
-              fontWeight: 600,
-              background: 'linear-gradient(135deg, #0097A7, #00BCD4)',
-            }}
-          >
-            Adicionar Primeiro Quarto
-          </Button>
-        </Paper>
+        <Card>
+          <EmptyState
+            title="Nenhum quarto cadastrado"
+            description="Cadastre a primeira acomodação para começar a receber reservas e definir preços por temporada."
+            icon={<HotelOutlined />}
+            action={
+              <Button variant="contained" startIcon={<AddOutlined />} onClick={handleOpenAdd}>
+                Cadastrar primeiro quarto
+              </Button>
+            }
+          />
+        </Card>
       ) : (
-        <Grid container spacing={3}>
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))' },
+            gap: { xs: 2, md: 3 },
+          }}
+        >
           {rooms.map((room) => (
-            <Grid size={{ xs: 12, md: 6 }} key={room.id}>
-              <Card
-                sx={{
-                  borderRadius: '16px',
-                  border: '1px solid',
-                  borderColor: room.ativo ? 'divider' : 'warning.light',
-                  opacity: room.ativo ? 1 : 0.65,
-                  boxShadow: '0 4px 20px 0 rgba(0,0,0,0.015)',
-                  transition: 'transform 0.2s ease, box-shadow 0.2s ease',
-                  '&:hover': {
-                    transform: 'translateY(-2px)',
-                    boxShadow: '0 8px 30px 0 rgba(0,0,0,0.04)',
-                  },
-                  display: 'flex',
-                  flexDirection: 'column',
-                  height: '100%',
-                }}
-              >
-                <CardContent sx={{ flexGrow: 1, p: 3 }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
-                    <Box>
-                      <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>
-                        {room.nome}
-                      </Typography>
+            <Card
+              key={room.id}
+              sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                height: '100%',
+                borderColor: room.ativo ? 'divider' : 'warning.main',
+                opacity: room.ativo ? 1 : 0.8,
+                transition: 'border-color 180ms, box-shadow 180ms, transform 180ms',
+                '&:hover': {
+                  transform: 'translateY(-2px)',
+                  boxShadow: (theme) => `0 10px 30px ${alpha(theme.palette.text.primary, 0.08)}`,
+                },
+              }}
+            >
+              <CardContent sx={{ flexGrow: 1, p: 3, pb: '0 !important' }}>
+                <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2, mb: 2 }}>
+                  {/* A listagem da API não traz fotos do quarto; o bloco é um marcador visual neutro. */}
+                  <Box
+                    aria-hidden
+                    sx={{
+                      width: 56,
+                      height: 56,
+                      borderRadius: 2,
+                      flexShrink: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      bgcolor: 'action.selected',
+                      color: 'primary.main',
+                    }}
+                  >
+                    <HotelOutlined />
+                  </Box>
+                  <Box sx={{ minWidth: 0, flex: 1 }}>
+                    <Typography variant="h6" component="p" sx={{ fontWeight: 600 }} noWrap>
+                      {room.nome}
+                    </Typography>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 0.75, mt: 0.5 }}>
                       {room.tipoAcomodacao && (
                         <Chip
-                          icon={<Class sx={{ fontSize: '14px !important' }} />}
+                          icon={<ClassOutlined sx={{ fontSize: 14 }} />}
                           label={room.tipoAcomodacao.nome}
                           size="small"
-                          color="primary"
                           variant="outlined"
-                          sx={{ borderRadius: '6px', fontSize: '0.75rem', fontWeight: 600 }}
                         />
                       )}
-                    </Box>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Switch
-                        checked={room.ativo}
-                        onChange={() => handleToggleActive(room)}
-                        color="success"
-                        size="small"
-                      />
-                      <Chip
-                        label={room.ativo ? 'Ativo' : 'Inativo'}
-                        size="small"
-                        color={room.ativo ? 'success' : 'default'}
-                        sx={{ height: 20, fontSize: '0.7rem', fontWeight: 600 }}
-                      />
+                      <StatusChip status={room.ativo ? 'ATIVO' : 'INATIVO'} />
                     </Box>
                   </Box>
+                  <Tooltip title={room.ativo ? 'Desativar quarto' : 'Ativar quarto'}>
+                    <Switch
+                      checked={room.ativo}
+                      onChange={() => handleToggleActive(room)}
+                      color="success"
+                      size="small"
+                      slotProps={{
+                        input: {
+                          'aria-label': `${room.ativo ? 'Desativar' : 'Ativar'} quarto ${room.nome}`,
+                        },
+                      }}
+                    />
+                  </Tooltip>
+                </Box>
 
-                  <Typography variant="body2" color="text.secondary" sx={{ minHeight: 40, mb: 3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                    {room.descricao || 'Sem descrição cadastrada.'}
-                  </Typography>
-
-                  <Grid container spacing={2}>
-                    <Grid size={{ xs: 4 }}>
-                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                        Capacidade
-                      </Typography>
-                      <Typography variant="body2" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                        <People sx={{ fontSize: 16, color: 'text.secondary' }} /> {room.capacidade} {room.capacidade === 1 ? 'pessoa' : 'pessoas'}
-                      </Typography>
-                    </Grid>
-                    <Grid size={{ xs: 4 }}>
-                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                        Quantidade
-                      </Typography>
-                      <Typography variant="body2" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                        <Hotel sx={{ fontSize: 16, color: 'text.secondary' }} /> {room.quantidade} {room.quantidade === 1 ? 'quarto' : 'quartos'}
-                      </Typography>
-                    </Grid>
-                    <Grid size={{ xs: 4 }}>
-                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                        Preço Base
-                      </Typography>
-                      <Typography variant="body2" color="primary.main" sx={{ fontWeight: 700 }}>
-                        R$ {Number(room.precoBase).toFixed(2)}
-                      </Typography>
-                    </Grid>
-                  </Grid>
-                </CardContent>
-
-                <CardActions
+                <Typography
+                  variant="body2"
+                  color="textSecondary"
                   sx={{
-                    px: 3,
-                    py: 2,
-                    bgcolor: 'rgba(0,0,0,0.01)',
-                    borderTop: '1px solid',
-                    borderColor: 'divider',
-                    justifyContent: 'space-between',
+                    minHeight: 40,
+                    mb: 2.5,
+                    display: '-webkit-box',
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: 'vertical',
+                    overflow: 'hidden',
                   }}
                 >
-                  <Box sx={{ display: 'flex', gap: 1 }}>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      startIcon={<Image />}
-                      onClick={() => handleOpenPhotos(room)}
-                      sx={{
-                        borderRadius: '8px',
-                        textTransform: 'none',
-                        fontWeight: 600,
-                        borderColor: 'primary.main',
-                        color: 'primary.main',
-                      }}
-                    >
-                      Fotos
-                    </Button>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      startIcon={<CalendarMonth />}
-                      onClick={() => handleOpenPrices(room)}
-                      sx={{
-                        borderRadius: '8px',
-                        textTransform: 'none',
-                        fontWeight: 600,
-                        borderColor: 'primary.main',
-                        color: 'primary.main',
-                      }}
-                    >
-                      Preços & Agenda
-                    </Button>
-                  </Box>
+                  {room.descricao || 'Sem descrição cadastrada.'}
+                </Typography>
 
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+                    gap: 1.5,
+                    pb: 2.5,
+                  }}
+                >
                   <Box>
-                    <Tooltip title="Editar quarto">
-                      <IconButton onClick={() => handleOpenEdit(room)} color="primary" size="small" sx={{ mr: 1 }}>
-                        <Edit fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Remover quarto">
-                      <IconButton onClick={() => handleOpenDelete(room)} color="error" size="small">
-                        <Delete fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
+                    <Typography variant="caption" color="textSecondary" component="p">
+                      Capacidade
+                    </Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <PeopleOutlined sx={{ fontSize: 16, color: 'text.secondary' }} />
+                      {room.capacidade} {room.capacidade === 1 ? 'pessoa' : 'pessoas'}
+                    </Typography>
                   </Box>
-                </CardActions>
-              </Card>
-            </Grid>
+                  <Box>
+                    <Typography variant="caption" color="textSecondary" component="p">
+                      Quantidade
+                    </Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <HotelOutlined sx={{ fontSize: 16, color: 'text.secondary' }} />
+                      {room.quantidade} {room.quantidade === 1 ? 'quarto' : 'quartos'}
+                    </Typography>
+                  </Box>
+                  <Box>
+                    <Typography variant="caption" color="textSecondary" component="p">
+                      Diária base
+                    </Typography>
+                    <Typography variant="body2" color="primary" sx={{ fontWeight: 700 }}>
+                      {formatCurrency(room.precoBase)}
+                    </Typography>
+                  </Box>
+                </Box>
+              </CardContent>
+
+              <CardActions
+                sx={{
+                  px: 3,
+                  py: 1.5,
+                  borderTop: '1px solid',
+                  borderColor: 'divider',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: 1,
+                }}
+              >
+                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<PhotoLibraryOutlined />}
+                    onClick={() => handleOpenPhotos(room)}
+                  >
+                    Fotos
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<CalendarMonthOutlined />}
+                    onClick={() => handleOpenPrices(room)}
+                  >
+                    Preços e agenda
+                  </Button>
+                </Box>
+
+                <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center' }}>
+                  <Tooltip title="Editar quarto">
+                    <IconButton
+                      size="small"
+                      color="primary"
+                      aria-label={`Editar quarto ${room.nome}`}
+                      onClick={() => handleOpenEdit(room)}
+                    >
+                      <EditOutlined fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Remover quarto">
+                    <IconButton
+                      size="small"
+                      color="error"
+                      aria-label={`Remover quarto ${room.nome}`}
+                      onClick={() => handleOpenDelete(room)}
+                    >
+                      <DeleteOutlined fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </Stack>
+              </CardActions>
+            </Card>
           ))}
-        </Grid>
+        </Box>
       )}
 
       {/* CRUD Room Dialog */}
       <Dialog
         open={roomDialogOpen}
         onClose={() => !saving && setRoomDialogOpen(false)}
-        maxWidth="sm"
+        maxWidth="md"
         fullWidth
-        sx={{ '& .MuiDialog-paper': { borderRadius: '16px' } }}
       >
-        <DialogTitle sx={{ fontFamily: '"Outfit", sans-serif', fontWeight: 700 }}>
-          {selectedRoom ? 'Editar Acomodação' : 'Adicionar Nova Acomodação'}
+        <DialogTitle component="h2">
+          {selectedRoom ? 'Editar quarto' : 'Novo quarto'}
         </DialogTitle>
-        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, pt: 1 }}>
-          <TextField
-            label="Nome do Quarto"
-            fullWidth
-            required
-            disabled={saving}
-            value={nome}
-            onChange={(e) => setNome(e.target.value)}
-            placeholder="Ex: Quarto Luxo Casal"
-          />
+        <DialogContent>
+          <FormSection
+            title="Identificação"
+            description="Como a acomodação aparece para o hóspede na busca do estabelecimento."
+          >
+            <FormGrid columns={2}>
+              <FormSpan span={2}>
+                <TextField
+                  label="Nome do quarto"
+                  fullWidth
+                  required
+                  disabled={saving}
+                  value={nome}
+                  onChange={(e) => setNome(e.target.value)}
+                  placeholder="Ex.: Quarto luxo casal"
+                />
+              </FormSpan>
 
-          <Grid container spacing={2}>
-            <Grid size={{ xs: 12, sm: 6 }}>
-              <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
-                <FormControl fullWidth required>
-                  <InputLabel id="room-type-label">Tipo de Acomodação</InputLabel>
-                  <Select
-                    labelId="room-type-label"
-                    value={tipoAcomodacaoId}
-                    label="Tipo de Acomodação"
-                    disabled={saving}
-                    onChange={(e) => setTipoAcomodacaoId(e.target.value)}
-                  >
-                    {roomTypes.map((type) => (
-                      <MenuItem key={type.id} value={type.id}>
-                        {type.nome}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-                <Tooltip title="Gerenciar tipos de acomodação">
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    onClick={() => setTypeDialogOpen(true)}
-                    sx={{ minWidth: 90, height: 56, borderRadius: '8px', textTransform: 'none', fontWeight: 600, fontSize: '0.75rem' }}
-                  >
-                    Gerenciar
-                  </Button>
-                </Tooltip>
-              </Box>
-            </Grid>
+              <FormSpan span={2}>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    gap: 1,
+                    alignItems: 'flex-start',
+                    flexWrap: { xs: 'wrap', sm: 'nowrap' },
+                  }}
+                >
+                  <FormControl fullWidth required sx={{ flex: 1, minWidth: 200 }}>
+                    <InputLabel id="room-type-label">Tipo de acomodação</InputLabel>
+                    <Select
+                      labelId="room-type-label"
+                      value={tipoAcomodacaoId}
+                      label="Tipo de acomodação"
+                      disabled={saving}
+                      onChange={(e) => setTipoAcomodacaoId(e.target.value)}
+                    >
+                      {roomTypes.map((type) => (
+                        <MenuItem key={type.id} value={type.id}>
+                          {type.nome}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  <Tooltip title="Gerenciar tipos de acomodação">
+                    <Button
+                      variant="outlined"
+                      startIcon={<TuneOutlined />}
+                      onClick={() => setTypeDialogOpen(true)}
+                      disabled={saving}
+                      sx={{ minHeight: 56, flexShrink: 0 }}
+                    >
+                      Gerenciar
+                    </Button>
+                  </Tooltip>
+                </Box>
+              </FormSpan>
 
-            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormSpan span={2}>
+                <TextField
+                  label="Descrição detalhada"
+                  fullWidth
+                  multiline
+                  minRows={3}
+                  disabled={saving}
+                  value={descricao}
+                  onChange={(e) => setDescricao(e.target.value)}
+                  placeholder="Descreva as comodidades do quarto: ar-condicionado, frigobar, TV, varanda…"
+                  helperText="Aparece no card e na página de detalhes da acomodação."
+                />
+              </FormSpan>
+            </FormGrid>
+          </FormSection>
+
+          <Divider sx={{ my: 3 }} />
+
+          <FormSection
+            title="Capacidade e diária"
+            description="Valores de referência usados no cálculo de disponibilidade e preço."
+          >
+            <FormGrid columns={2}>
               <TextField
-                label="Preço Base (Diária)"
+                label="Preço base (diária)"
                 fullWidth
                 required
                 type="number"
@@ -1022,101 +1021,58 @@ export default function EstRooms() {
                     startAdornment: <InputAdornment position="start">R$</InputAdornment>,
                   },
                 }}
+                helperText="Diária padrão fora das temporadas."
               />
-            </Grid>
-          </Grid>
-
-          <Grid container spacing={2}>
-            <Grid size={{ xs: 12, sm: 6 }}>
               <TextField
-                label="Capacidade de Hóspedes"
+                label="Capacidade de hóspedes"
                 fullWidth
                 required
                 type="number"
                 disabled={saving}
                 value={capacidade}
                 onChange={(e) => setCapacidade(e.target.value)}
-                helperText="Número máximo de pessoas"
+                helperText="Número máximo de pessoas por quarto."
               />
-            </Grid>
-
-            <Grid size={{ xs: 12, sm: 6 }}>
-              <TextField
-                label="Quantidade de Quartos"
-                fullWidth
-                required
-                type="number"
-                disabled={saving}
-                value={quantidade}
-                onChange={(e) => setQuantidade(e.target.value)}
-                helperText="Número total de quartos deste tipo"
-              />
-            </Grid>
-          </Grid>
-
-          <TextField
-            label="Descrição detalhada"
-            fullWidth
-            multiline
-            rows={3}
-            disabled={saving}
-            value={descricao}
-            onChange={(e) => setDescricao(e.target.value)}
-            placeholder="Descreva as comodidades do quarto: ar condicionado, frigobar, tv, etc."
-          />
+              <FormSpan span={2}>
+                <TextField
+                  label="Quantidade de quartos"
+                  fullWidth
+                  required
+                  type="number"
+                  disabled={saving}
+                  value={quantidade}
+                  onChange={(e) => setQuantidade(e.target.value)}
+                  helperText="Número total de quartos desta categoria no inventário."
+                />
+              </FormSpan>
+            </FormGrid>
+          </FormSection>
         </DialogContent>
-        <DialogActions sx={{ p: 2.5 }}>
-          <Button onClick={() => setRoomDialogOpen(false)} disabled={saving} sx={{ textTransform: 'none', fontWeight: 600 }}>
+        <FormActions sx={{ px: 3, pb: 2.5, mt: 0 }}>
+          <Button color="inherit" onClick={() => setRoomDialogOpen(false)} disabled={saving}>
             Cancelar
           </Button>
-          <Button
-            variant="contained"
-            onClick={handleSaveRoom}
-            disabled={saving}
-            sx={{
-              borderRadius: '8px',
-              textTransform: 'none',
-              fontWeight: 600,
-              background: 'linear-gradient(135deg, #0097A7, #00BCD4)',
-            }}
-          >
-            {saving ? <CircularProgress size={24} color="inherit" /> : 'Salvar'}
+          <Button variant="contained" onClick={handleSaveRoom} disabled={saving}>
+            {saving ? 'Salvando…' : selectedRoom ? 'Salvar alterações' : 'Cadastrar quarto'}
           </Button>
-        </DialogActions>
+        </FormActions>
       </Dialog>
 
       {/* Delete Confirmation Dialog */}
-      <Dialog
+      <ConfirmDialog
         open={deleteDialogOpen}
-        onClose={() => !saving && setDeleteDialogOpen(false)}
-        maxWidth="xs"
-        fullWidth
-        sx={{ '& .MuiDialog-paper': { borderRadius: '16px' } }}
-      >
-        <DialogTitle sx={{ fontFamily: '"Outfit", sans-serif', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
-          <WarningAmber sx={{ color: 'error.main' }} />
-          Confirmar Exclusão
-        </DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            Deseja realmente excluir a acomodação <strong>{roomToDelete?.nome}</strong>? Esta ação é irreversível e removerá todos os preços vinculados.
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions sx={{ p: 2.5, gap: 1 }}>
-          <Button onClick={() => setDeleteDialogOpen(false)} disabled={saving} sx={{ textTransform: 'none', fontWeight: 600 }}>
-            Cancelar
-          </Button>
-          <Button
-            variant="contained"
-            color="error"
-            onClick={handleConfirmDelete}
-            disabled={saving}
-            sx={{ borderRadius: '8px', textTransform: 'none', fontWeight: 600 }}
-          >
-            {saving ? 'Excluindo...' : 'Sim, Excluir'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+        title="Remover quarto"
+        description={
+          <>
+            Remover a acomodação <strong>{roomToDelete?.nome}</strong>? Esta ação é irreversível e removerá todos os preços e bloqueios vinculados.
+          </>
+        }
+        confirmLabel="Remover quarto"
+        tone="error"
+        loading={saving}
+        onConfirm={handleConfirmDelete}
+        onClose={() => { if (!saving) setDeleteDialogOpen(false); }}
+      />
 
       {/* Room Photos Dialog */}
       <Dialog
@@ -1124,41 +1080,73 @@ export default function EstRooms() {
         onClose={() => { setPhotosDialogOpen(false); setUploadPreview(null); }}
         maxWidth="sm"
         fullWidth
-        sx={{ '& .MuiDialog-paper': { borderRadius: '16px' } }}
       >
-        <DialogTitle sx={{ fontFamily: '"Outfit", sans-serif', fontWeight: 700 }}>
-          Fotos: {photosRoom?.nome}
+        <DialogTitle component="h2">
+          {photosRoom ? `Fotos do quarto: ${photosRoom.nome}` : 'Fotos do quarto'}
         </DialogTitle>
         <DialogContent>
           {photosLoading ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress /></Box>
+            <Box sx={{ py: 2 }}>
+              <InlineLoading label="Carregando fotos…" />
+            </Box>
           ) : roomPhotos.length === 0 ? (
-            <Box sx={{ textAlign: 'center', py: 4 }}>
-              <Image sx={{ fontSize: 48, color: 'text.secondary', mb: 1 }} />
-              <Typography color="text.secondary">Nenhuma foto cadastrada para este quarto.</Typography>
+            <Box sx={{ textAlign: 'center', py: 3 }}>
+              <ImageOutlined sx={{ fontSize: 40, color: 'text.secondary', mb: 0.5 }} aria-hidden />
+              <Typography variant="body2" color="textSecondary">
+                Nenhuma foto cadastrada para este quarto.
+              </Typography>
             </Box>
           ) : (
-            <ImageList cols={2} gap={8}>
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: {
+                  xs: 'repeat(2, minmax(0, 1fr))',
+                  sm: 'repeat(3, minmax(0, 1fr))',
+                },
+                gap: 1.5,
+              }}
+            >
               {roomPhotos.map((foto) => (
-                <ImageListItem key={foto.id}>
-                  <img src={foto.url} alt={`Foto ${foto.ordem}`} style={{ borderRadius: 8, height: 160, objectFit: 'cover' }} />
-                  <ImageListItemBar
-                    sx={{ background: 'linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 100%)' }}
-                    actionIcon={
-                      <IconButton size="small" sx={{ color: '#fff' }} onClick={() => handleDeleteRoomPhoto(foto.id)} disabled={saving}>
-                        <Delete fontSize="small" />
-                      </IconButton>
-                    }
+                <Box
+                  key={foto.id}
+                  sx={{ position: 'relative', borderRadius: 2, overflow: 'hidden', bgcolor: 'action.hover' }}
+                >
+                  <Box
+                    component="img"
+                    src={foto.url}
+                    alt={`Foto ${foto.ordem + 1} do quarto ${photosRoom?.nome ?? ''}`}
+                    loading="lazy"
+                    sx={{ display: 'block', width: '100%', height: 140, objectFit: 'cover' }}
                   />
-                </ImageListItem>
+                  <Tooltip title="Remover foto">
+                    <span>
+                      <IconButton
+                        size="small"
+                        aria-label={`Remover foto ${foto.ordem + 1}`}
+                        onClick={() => handleDeleteRoomPhoto(foto.id)}
+                        disabled={saving}
+                        sx={(theme) => ({
+                          position: 'absolute',
+                          top: 6,
+                          right: 6,
+                          bgcolor: alpha(theme.palette.common.black, 0.55),
+                          color: theme.palette.common.white,
+                          '&:hover': { bgcolor: alpha(theme.palette.common.black, 0.75) },
+                        })}
+                      >
+                        <DeleteOutlined fontSize="small" />
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                </Box>
               ))}
-            </ImageList>
+            </Box>
           )}
 
-          <Box sx={{ mt: 3, borderTop: '1px solid', borderColor: 'divider', pt: 3 }}>
-            <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2 }}>
-              Adicionar nova foto
-            </Typography>
+          <Divider sx={{ my: 3 }} />
+
+          <FormSection title="Adicionar nova foto" description="JPG, PNG ou WebP até 10 MB.">
             <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={(e) => {
               const file = e.target.files?.[0];
               if (file) {
@@ -1169,16 +1157,58 @@ export default function EstRooms() {
               }
             }} />
             {!uploadPreview ? (
-              <Box onClick={() => fileInputRef.current?.click()} sx={{ border: '2px dashed', borderColor: 'divider', borderRadius: 2, p: 3, textAlign: 'center', cursor: 'pointer', '&:hover': { borderColor: 'primary.main', bgcolor: 'rgba(0, 151, 167, 0.04)' } }}>
-                <CloudUpload sx={{ fontSize: 36, color: 'text.secondary', mb: 0.5 }} />
-                <Typography variant="body2" color="text.secondary">Clique para selecionar imagem</Typography>
-              </Box>
+              <ButtonBase
+                onClick={() => fileInputRef.current?.click()}
+                sx={{
+                  width: '100%',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 0.5,
+                  p: 3,
+                  border: '2px dashed',
+                  borderColor: 'divider',
+                  borderRadius: 2,
+                  textAlign: 'center',
+                  transition: 'border-color 120ms, background-color 120ms',
+                  '&:hover': { borderColor: 'primary.main', bgcolor: 'action.hover' },
+                }}
+              >
+                <CloudUploadOutlined sx={{ fontSize: 36, color: 'text.secondary' }} />
+                <Typography variant="body2" color="textSecondary">
+                  Clique para selecionar uma imagem
+                </Typography>
+              </ButtonBase>
             ) : (
               <Box sx={{ position: 'relative' }}>
-                <IconButton onClick={() => { setUploadFile(null); setUploadPreview(null); }} sx={{ position: 'absolute', top: 4, right: 4, bgcolor: 'rgba(0,0,0,0.5)', color: '#fff' }} size="small">
-                  <Close fontSize="small" />
+                <IconButton
+                  onClick={() => { setUploadFile(null); setUploadPreview(null); }}
+                  aria-label="Remover imagem selecionada"
+                  disabled={saving}
+                  sx={(theme) => ({
+                    position: 'absolute',
+                    top: 6,
+                    right: 6,
+                    bgcolor: alpha(theme.palette.common.black, 0.55),
+                    color: theme.palette.common.white,
+                    '&:hover': { bgcolor: alpha(theme.palette.common.black, 0.75) },
+                  })}
+                  size="small"
+                >
+                  <CloseOutlined fontSize="small" />
                 </IconButton>
-                <img src={uploadPreview} alt="Preview" style={{ width: '100%', maxHeight: 240, objectFit: 'contain', borderRadius: 8, backgroundColor: '#000' }} />
+                <Box
+                  component="img"
+                  src={uploadPreview}
+                  alt="Pré-visualização da foto do quarto"
+                  sx={{
+                    width: '100%',
+                    maxHeight: 240,
+                    objectFit: 'contain',
+                    borderRadius: 2,
+                    bgcolor: 'action.hover',
+                  }}
+                />
               </Box>
             )}
             <Button
@@ -1186,17 +1216,18 @@ export default function EstRooms() {
               fullWidth
               disabled={!uploadFile || saving}
               onClick={handleUploadRoomPhoto}
-              sx={{ mt: 2, borderRadius: '8px', textTransform: 'none', fontWeight: 600, background: 'linear-gradient(135deg, #0097A7, #00BCD4)' }}
+              startIcon={<CloudUploadOutlined />}
             >
-              {saving ? <CircularProgress size={20} color="inherit" /> : 'Fazer Upload'}
+              {saving ? 'Enviando…' : 'Enviar foto'}
             </Button>
-          </Box>
+            {saving && <InlineLoading label="Enviando foto…" />}
+          </FormSection>
         </DialogContent>
-        <DialogActions sx={{ p: 2.5 }}>
-          <Button onClick={() => { setPhotosDialogOpen(false); setUploadPreview(null); }} variant="contained" sx={{ textTransform: 'none', fontWeight: 600, borderRadius: '8px' }}>
+        <FormActions sx={{ px: 3, pb: 2.5, mt: 0 }}>
+          <Button onClick={() => { setPhotosDialogOpen(false); setUploadPreview(null); }} variant="contained">
             Fechar
           </Button>
-        </DialogActions>
+        </FormActions>
       </Dialog>
 
       {/* Prices & Calendar Management Dialog */}
@@ -1205,19 +1236,14 @@ export default function EstRooms() {
         onClose={() => setPricesDialogOpen(false)}
         maxWidth="md"
         fullWidth
-        sx={{ '& .MuiDialog-paper': { borderRadius: '16px' } }}
       >
-        <DialogTitle sx={{ fontFamily: '"Outfit", sans-serif', fontWeight: 700, borderBottom: '1px solid', borderColor: 'divider', pb: 1 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Box>
-              <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                Agenda e Preços: {selectedRoom?.nome}
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                Preço base atual: R$ {selectedRoom ? Number(selectedRoom.precoBase).toFixed(2) : '0,00'}
-              </Typography>
-            </Box>
-          </Box>
+        <DialogTitle component="div">
+          <Typography variant="h6" component="h2">
+            {selectedRoom ? `Preços e agenda: ${selectedRoom.nome}` : 'Preços e agenda'}
+          </Typography>
+          <Typography variant="body2" color="textSecondary" sx={{ mt: 0.5 }}>
+            {`Diária base atual: ${formatCurrency(selectedRoom ? Number(selectedRoom.precoBase) : 0)}`}
+          </Typography>
         </DialogTitle>
         <DialogContent sx={{ p: 0 }}>
           <Tabs
@@ -1228,93 +1254,109 @@ export default function EstRooms() {
             indicatorColor="primary"
             sx={{ borderBottom: '1px solid', borderColor: 'divider' }}
           >
-            <Tab icon={<AttachMoney />} label="Preços por Temporada" iconPosition="start" sx={{ textTransform: 'none', fontWeight: 600 }} />
-            <Tab icon={<CalendarMonth />} label="Bloqueio de Agenda" iconPosition="start" sx={{ textTransform: 'none', fontWeight: 600 }} />
+            <Tab
+              icon={<AttachMoneyOutlined />}
+              label="Preços por temporada"
+              iconPosition="start"
+            />
+            <Tab
+              icon={<CalendarMonthOutlined />}
+              label="Bloqueio de agenda"
+              iconPosition="start"
+            />
           </Tabs>
 
           {/* TAB 0: SEASONAL PRICING */}
           {activeTab === 0 && (
-            <Box sx={{ p: 3 }}>
-              <Grid container spacing={3}>
+            <Box sx={{ p: { xs: 2, sm: 3 } }}>
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 5fr) minmax(0, 7fr)' },
+                  gap: 3,
+                  alignItems: 'start',
+                }}
+              >
                 {/* Form to Set Seasonal Price */}
-                <Grid size={{ xs: 12, md: 5 }}>
-                  <Paper variant="outlined" sx={{ p: 2.5, borderRadius: '12px' }}>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2, display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                      <Settings sx={{ fontSize: 18, color: 'primary.main' }} /> Definir Ajuste Temporada
-                    </Typography>
-
-                    {seasons.length === 0 ? (
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, p: 2, bgcolor: 'rgba(0,0,0,0.02)', borderRadius: 2 }}>
-                        <Info sx={{ color: 'text.secondary' }} />
-                        <Typography variant="body2" color="text.secondary">
-                          Nenhuma temporada cadastrada na base.
-                        </Typography>
-                      </Box>
-                    ) : (
-                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                        <FormControl fullWidth required size="small">
-                          <InputLabel id="season-select-label">Temporada</InputLabel>
-                          <Select
-                            labelId="season-select-label"
-                            value={selectedSeasonId}
-                            label="Temporada"
-                            onChange={(e) => setSelectedSeasonId(e.target.value)}
-                          >
-                            {seasons.map((season) => (
-                              <MenuItem key={season.id} value={season.id}>
-                                {season.nome} ({season.percentualAjuste}% ajuste padrão)
-                              </MenuItem>
-                            ))}
-                          </Select>
-                        </FormControl>
-
-                        <TextField
-                          label="Preço Personalizado (Diária)"
-                          fullWidth
-                          required
-                          size="small"
-                          type="number"
-                          value={seasonPriceValue}
-                          onChange={(e) => setSeasonPriceValue(e.target.value)}
-                          slotProps={{
-                            input: {
-                              startAdornment: <InputAdornment position="start">R$</InputAdornment>,
-                            },
-                          }}
-                          helperText="Se vazio, o sistema aplicará o percentual de ajuste da temporada sobre o preço base."
-                        />
-
-                        <Button
-                          variant="contained"
-                          onClick={handleSaveSeasonalPrice}
-                          disabled={saving}
-                          sx={{
-                            borderRadius: '8px',
-                            textTransform: 'none',
-                            fontWeight: 600,
-                            background: 'linear-gradient(135deg, #0097A7, #00BCD4)',
-                          }}
+                <SectionCard
+                  title="Ajuste por temporada"
+                  subtitle="Defina um valor fixo para a diária em cada temporada."
+                >
+                  {seasons.length === 0 ? (
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: 1,
+                        p: 2,
+                        bgcolor: 'action.hover',
+                        borderRadius: 2,
+                      }}
+                    >
+                      <InfoOutlined sx={{ color: 'text.secondary', fontSize: 20 }} aria-hidden />
+                      <Typography variant="body2" color="textSecondary">
+                        Nenhuma temporada cadastrada na base.
+                      </Typography>
+                    </Box>
+                  ) : (
+                    <FormGrid columns={1} gap={2}>
+                      <FormControl fullWidth required size="small">
+                        <InputLabel id="season-select-label">Temporada</InputLabel>
+                        <Select
+                          labelId="season-select-label"
+                          value={selectedSeasonId}
+                          label="Temporada"
+                          onChange={(e) => setSelectedSeasonId(e.target.value)}
                         >
-                          Definir Preço
-                        </Button>
-                      </Box>
-                    )}
-                  </Paper>
-                </Grid>
+                          {seasons.map((season) => (
+                            <MenuItem key={season.id} value={season.id}>
+                              {season.nome} ({season.percentualAjuste}% ajuste padrão)
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+
+                      <TextField
+                        label="Preço personalizado (diária)"
+                        fullWidth
+                        required
+                        size="small"
+                        type="number"
+                        value={seasonPriceValue}
+                        onChange={(e) => setSeasonPriceValue(e.target.value)}
+                        slotProps={{
+                          input: {
+                            startAdornment: <InputAdornment position="start">R$</InputAdornment>,
+                          },
+                        }}
+                        helperText="Se vazio, o sistema aplicará o percentual de ajuste da temporada sobre o preço base."
+                      />
+
+                      <Button
+                        variant="contained"
+                        onClick={handleSaveSeasonalPrice}
+                        disabled={saving}
+                        startIcon={<SettingsOutlined />}
+                      >
+                        Definir preço
+                      </Button>
+                    </FormGrid>
+                  )}
+                </SectionCard>
 
                 {/* Seasonal prices table */}
-                <Grid size={{ xs: 12, md: 7 }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5 }}>
-                    Preços específicos definidos
-                  </Typography>
-
-                  <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: '12px', overflow: 'hidden' }}>
+                <SectionCard
+                  title="Preços específicos definidos"
+                  subtitle="Valores que substituem o percentual padrão da temporada."
+                  noPadding
+                >
+                  <TableContainer sx={{ overflowX: 'auto' }}>
                     <Table size="small">
-                      <TableHead sx={{ bgcolor: 'rgba(0,0,0,0.015)' }}>
+                      <TableHead>
                         <TableRow>
-                          <TableCell sx={{ fontWeight: 600 }}>Temporada</TableCell>
-                          <TableCell sx={{ fontWeight: 600 }}>Período</TableCell>
-                          <TableCell sx={{ fontWeight: 600 }}>Preço</TableCell>
+                          <TableCell>Temporada</TableCell>
+                          <TableCell>Período</TableCell>
+                          <TableCell align="right">Preço</TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
@@ -1328,11 +1370,11 @@ export default function EstRooms() {
                           detailedRoom.precos.map((price) => (
                             <TableRow key={price.temporadaId} hover>
                               <TableCell sx={{ fontWeight: 600 }}>{price.temporada?.nome}</TableCell>
-                              <TableCell sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>
+                              <TableCell sx={{ color: 'text.secondary' }}>
                                 {dayjs(price.temporada?.dataInicio).format('DD/MM')} a {dayjs(price.temporada?.dataFim).format('DD/MM')}
                               </TableCell>
-                              <TableCell color="primary.main" sx={{ fontWeight: 700 }}>
-                                R$ {Number(price.valor).toFixed(2)}
+                              <TableCell align="right" sx={{ fontWeight: 700, color: 'primary.main' }}>
+                                {formatCurrency(price.valor)}
                               </TableCell>
                             </TableRow>
                           ))
@@ -1340,79 +1382,105 @@ export default function EstRooms() {
                       </TableBody>
                     </Table>
                   </TableContainer>
-                </Grid>
-              </Grid>
+                </SectionCard>
+              </Box>
             </Box>
           )}
 
           {/* TAB 1: DATE BLOCKING */}
           {activeTab === 1 && (
-            <Box sx={{ p: 3 }}>
-              <Grid container spacing={3}>
+            <Box sx={{ p: { xs: 2, sm: 3 } }}>
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 5fr) minmax(0, 7fr)' },
+                  gap: 3,
+                  alignItems: 'start',
+                }}
+              >
                 {/* Form to Block Date */}
-                <Grid size={{ xs: 12, md: 5 }}>
-                  <Paper variant="outlined" sx={{ p: 2.5, borderRadius: '12px' }}>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2, display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                      <Lock sx={{ fontSize: 18, color: 'error.main' }} /> Bloquear Nova Data
-                    </Typography>
+                <SectionCard
+                  title="Bloquear nova data"
+                  subtitle="Datas bloqueadas ficam indisponíveis para novas reservas."
+                >
+                  <FormGrid columns={1} gap={2}>
+                    <TextField
+                      label="Data para bloqueio"
+                      fullWidth
+                      required
+                      size="small"
+                      type="date"
+                      slotProps={{
+                        inputLabel: { shrink: true },
+                      }}
+                      value={blockDateValue}
+                      onChange={(e) => setBlockDateValue(e.target.value)}
+                    />
 
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                      <TextField
-                        label="Data para Bloqueio"
-                        fullWidth
-                        required
-                        size="small"
-                        type="date"
-                        slotProps={{
-                          inputLabel: { shrink: true },
-                        }}
-                        value={blockDateValue}
-                        onChange={(e) => setBlockDateValue(e.target.value)}
-                      />
+                    <TextField
+                      label="Motivo do bloqueio"
+                      fullWidth
+                      size="small"
+                      value={blockReason}
+                      onChange={(e) => setBlockReason(e.target.value)}
+                      placeholder="Ex.: Manutenção, pintura"
+                    />
 
-                      <TextField
-                        label="Motivo do Bloqueio"
-                        fullWidth
-                        size="small"
-                        value={blockReason}
-                        onChange={(e) => setBlockReason(e.target.value)}
-                        placeholder="Ex: Manutenção, Pintura"
-                      />
-
-                      <Button
-                        variant="contained"
-                        color="error"
-                        onClick={handleBlockDate}
-                        disabled={saving}
-                        sx={{
-                          borderRadius: '8px',
-                          textTransform: 'none',
-                          fontWeight: 600,
-                          bgcolor: 'error.main',
-                          '&:hover': {
-                            bgcolor: 'error.dark',
-                          },
-                        }}
-                      >
-                        Bloquear Data
-                      </Button>
-                    </Box>
-                  </Paper>
-                </Grid>
+                    <Button
+                      variant="contained"
+                      color="error"
+                      onClick={handleBlockDate}
+                      disabled={saving}
+                      startIcon={<LockOutlined />}
+                    >
+                      Bloquear data
+                    </Button>
+                  </FormGrid>
+                </SectionCard>
 
                 {/* List of blocked dates */}
-                <Grid size={{ xs: 12, md: 7 }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1.5 }}>
-                    Datas bloqueadas futuras
-                  </Typography>
+                <SectionCard
+                  title="Datas bloqueadas futuras"
+                  subtitle="Desbloqueie quando o quarto voltar a ficar disponível."
+                >
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2, mb: 2 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                      <Box
+                        aria-hidden
+                        sx={(theme) => ({
+                          width: 10,
+                          height: 10,
+                          borderRadius: '50%',
+                          bgcolor: alpha(theme.palette.success.main, 0.9),
+                        })}
+                      />
+                      <Typography variant="caption" color="textSecondary">
+                        Disponível
+                      </Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                      <Box
+                        aria-hidden
+                        sx={(theme) => ({
+                          width: 10,
+                          height: 10,
+                          borderRadius: '50%',
+                          bgcolor: alpha(theme.palette.error.main, 0.9),
+                        })}
+                      />
+                      <Typography variant="caption" color="textSecondary">
+                        Bloqueado
+                      </Typography>
+                    </Box>
+                  </Box>
 
-                  <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: '12px', overflow: 'hidden' }}>
+                  <TableContainer sx={{ overflowX: 'auto' }}>
                     <Table size="small">
-                      <TableHead sx={{ bgcolor: 'rgba(0,0,0,0.015)' }}>
+                      <TableHead>
                         <TableRow>
-                          <TableCell sx={{ fontWeight: 600 }}>Data</TableCell>
-                          <TableCell sx={{ fontWeight: 600 }}>Motivo</TableCell>
-                          <TableCell align="center" sx={{ fontWeight: 600 }}>Desbloquear</TableCell>
+                          <TableCell>Data</TableCell>
+                          <TableCell>Motivo</TableCell>
+                          <TableCell align="center">Desbloquear</TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
@@ -1425,19 +1493,35 @@ export default function EstRooms() {
                         ) : (
                           detailedRoom.bloqueiosData.map((block) => (
                             <TableRow key={block.id} hover>
-                              <TableCell sx={{ fontWeight: 600 }}>
-                                {dayjs(block.data).format('DD/MM/YYYY')}
+                              <TableCell>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                  <Box
+                                    aria-hidden
+                                    sx={(theme) => ({
+                                      width: 8,
+                                      height: 8,
+                                      borderRadius: '50%',
+                                      flexShrink: 0,
+                                      bgcolor: alpha(theme.palette.error.main, 0.9),
+                                    })}
+                                  />
+                                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                    {dayjs(block.data).format('DD/MM/YYYY')}
+                                  </Typography>
+                                </Box>
                               </TableCell>
                               <TableCell>{block.motivo || 'Não informado'}</TableCell>
                               <TableCell align="center">
-                                <IconButton
-                                  size="small"
-                                  color="success"
-                                  onClick={() => handleUnblockDate(block.data)}
-                                  title="Remover bloqueio"
-                                >
-                                  <LockOpen fontSize="small" />
-                                </IconButton>
+                                <Tooltip title="Remover bloqueio">
+                                  <IconButton
+                                    size="small"
+                                    color="success"
+                                    aria-label={`Remover bloqueio de ${dayjs(block.data).format('DD/MM/YYYY')}`}
+                                    onClick={() => handleUnblockDate(block.data)}
+                                  >
+                                    <LockOpenOutlined fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
                               </TableCell>
                             </TableRow>
                           ))
@@ -1445,100 +1529,123 @@ export default function EstRooms() {
                       </TableBody>
                     </Table>
                   </TableContainer>
-                </Grid>
-              </Grid>
+                </SectionCard>
+              </Box>
             </Box>
           )}
         </DialogContent>
-        <DialogActions sx={{ p: 2.5, borderTop: '1px solid', borderColor: 'divider' }}>
-          <Button onClick={() => setPricesDialogOpen(false)} variant="contained" sx={{ textTransform: 'none', fontWeight: 600, borderRadius: '8px' }}>
+        <FormActions sx={{ px: 3, pb: 2.5, mt: 0 }}>
+          <Button onClick={() => setPricesDialogOpen(false)} variant="contained">
             Fechar
           </Button>
-        </DialogActions>
+        </FormActions>
       </Dialog>
 
       {/* Accommodation Type Management Dialog */}
-      <Dialog open={typeDialogOpen} onClose={() => setTypeDialogOpen(false)} maxWidth="xs" fullWidth sx={{ '& .MuiDialog-paper': { borderRadius: '16px' } }}>
-        <DialogTitle sx={{ fontFamily: '"Outfit", sans-serif', fontWeight: 700 }}>
-          Gerenciar Tipos de Acomodação
-        </DialogTitle>
-        <DialogContent sx={{ pt: 1 }}>
-          <Box sx={{ display: 'flex', gap: 1, mb: 3 }}>
-            <TextField
-              label="Novo Tipo"
-              fullWidth
-              size="small"
-              value={newTypeName}
-              onChange={(e) => setNewTypeName(e.target.value)}
-              placeholder="Ex: Chalé Rústico"
-            />
-            <Button
-              variant="contained"
-              onClick={handleCreateType}
-              disabled={savingType || !newTypeName.trim()}
-              sx={{ borderRadius: '8px', textTransform: 'none', fontWeight: 600, minWidth: 80, background: 'linear-gradient(135deg, #0097A7, #00BCD4)' }}
-            >
-              {savingType ? <CircularProgress size={20} color="inherit" /> : 'Adicionar'}
-            </Button>
-          </Box>
+      <Dialog open={typeDialogOpen} onClose={() => setTypeDialogOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle component="h2">Tipos de acomodação</DialogTitle>
+        <DialogContent>
+          <FormSection description="Categorias usadas para agrupar e filtrar os quartos do estabelecimento.">
+            <FormGrid columns={1} gap={2}>
+              <Box
+                sx={{
+                  display: 'flex',
+                  gap: 1,
+                  alignItems: 'flex-start',
+                  flexWrap: { xs: 'wrap', sm: 'nowrap' },
+                }}
+              >
+                <TextField
+                  label="Novo tipo"
+                  fullWidth
+                  size="small"
+                  value={newTypeName}
+                  onChange={(e) => setNewTypeName(e.target.value)}
+                  placeholder="Ex.: Chalé rústico"
+                />
+                <Button
+                  variant="contained"
+                  onClick={handleCreateType}
+                  disabled={savingType || !newTypeName.trim()}
+                  startIcon={<AddOutlined />}
+                  sx={{ flexShrink: 0 }}
+                >
+                  {savingType ? 'Adicionando…' : 'Adicionar'}
+                </Button>
+              </Box>
+            </FormGrid>
+          </FormSection>
 
-          <Divider sx={{ mb: 2 }} />
+          <Divider sx={{ my: 2.5 }} />
 
-          <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
+          <Typography variant="subtitle2" component="h3" sx={{ mb: 1.5 }}>
             Tipos cadastrados
           </Typography>
 
           {roomTypes.length === 0 ? (
-            <Typography variant="body2" color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
-              Nenhum tipo cadastrado ainda.
-            </Typography>
+            <EmptyState
+              title="Nenhum tipo cadastrado"
+              description="Crie o primeiro tipo para classificar as acomodações."
+              icon={<ClassOutlined />}
+              compact
+            />
           ) : (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            <Stack spacing={1}>
               {roomTypes.map((type) => (
-                <Paper key={type.id} variant="outlined" sx={{ p: 1.5, borderRadius: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Box
+                  key={type.id}
+                  sx={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    gap: 1,
+                    px: 1.5,
+                    py: 0.75,
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    borderRadius: 2,
+                  }}
+                >
                   <Typography variant="body2" sx={{ fontWeight: 600 }}>{type.nome}</Typography>
                   <Tooltip title="Excluir tipo">
                     <IconButton
                       size="small"
                       color="error"
+                      aria-label={`Excluir tipo ${type.nome}`}
                       onClick={() => { setTypeToDelete(type); setDeleteTypeDialogOpen(true); }}
                     >
-                      <Delete fontSize="small" />
+                      <DeleteOutlined fontSize="small" />
                     </IconButton>
                   </Tooltip>
-                </Paper>
+                </Box>
               ))}
-            </Box>
+            </Stack>
           )}
+
+          {savingType && <InlineLoading label="Salvando tipo…" sx={{ mt: 2 }} />}
         </DialogContent>
-        <DialogActions sx={{ p: 2.5 }}>
-          <Button onClick={() => setTypeDialogOpen(false)} sx={{ textTransform: 'none', fontWeight: 600 }}>
+        <FormActions sx={{ px: 3, pb: 2.5, mt: 0 }}>
+          <Button onClick={() => setTypeDialogOpen(false)} variant="outlined">
             Fechar
           </Button>
-        </DialogActions>
+        </FormActions>
       </Dialog>
 
       {/* Delete Type Confirmation Dialog */}
-      <Dialog open={deleteTypeDialogOpen} onClose={() => setDeleteTypeDialogOpen(false)} maxWidth="xs" fullWidth sx={{ '& .MuiDialog-paper': { borderRadius: '16px' } }}>
-        <DialogTitle sx={{ fontFamily: '"Outfit", sans-serif', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
-          <WarningAmber sx={{ color: 'error.main' }} />
-          Excluir Tipo
-        </DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            Deseja realmente excluir <strong>{typeToDelete?.nome}</strong>?
-            Os quartos vinculados a este tipo terão o campo "Tipo de Acomodação" removido (ficarão sem tipo definido).
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions sx={{ p: 2.5, gap: 1 }}>
-          <Button onClick={() => setDeleteTypeDialogOpen(false)} disabled={deletingType} sx={{ textTransform: 'none', fontWeight: 600 }}>
-            Cancelar
-          </Button>
-          <Button variant="contained" color="error" onClick={handleDeleteTypeConfirm} disabled={deletingType} sx={{ borderRadius: '8px', textTransform: 'none', fontWeight: 600 }}>
-            {deletingType ? 'Excluindo...' : 'Sim, Excluir'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </Box>
+      <ConfirmDialog
+        open={deleteTypeDialogOpen}
+        title="Excluir tipo de acomodação"
+        description={
+          <>
+            Excluir <strong>{typeToDelete?.nome}</strong>? Os quartos vinculados a este tipo ficarão sem tipo definido.
+          </>
+        }
+        confirmLabel="Excluir tipo"
+        tone="error"
+        loading={deletingType}
+        onConfirm={handleDeleteTypeConfirm}
+        onClose={() => { if (!deletingType) setDeleteTypeDialogOpen(false); }}
+      />
+    </PageContainer>
   );
 }

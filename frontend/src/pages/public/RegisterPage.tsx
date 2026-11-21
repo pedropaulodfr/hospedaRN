@@ -1,12 +1,11 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import {
   Box,
   Typography,
-  Container,
   Button,
   TextField,
   Card,
@@ -14,13 +13,14 @@ import {
   IconButton,
   InputAdornment,
   CircularProgress,
-  Grid,
   Divider,
+  Link,
+  Stack,
+  alpha,
 } from '@mui/material';
 import {
   Visibility,
   VisibilityOff,
-  BeachAccess,
   Email,
   Lock,
   Person,
@@ -30,9 +30,11 @@ import {
   Home,
   Public,
   PhoneCallback,
+  CheckCircleOutlined,
 } from '@mui/icons-material';
 import { authApi } from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
+import { Logo, FormSection, FormGrid, FormSpan } from '../../components/common';
 import toast from 'react-hot-toast';
 
 // Zod validation schema
@@ -77,6 +79,13 @@ const maskPhone = (value: string) => {
     .replace(/(\d{5})(\d)/, '$1-$2')
     .substring(0, 15);
 };
+
+/** Destaques da marca no painel lateral (fatos do produto, sem métricas inventadas). */
+const brandHighlights = [
+  'Cadastro rápido, direto pelo site',
+  'Reserve e acompanhe a aprovação em um só painel',
+  'Pagamento por Pix, boleto ou cartão',
+];
 
 export default function RegisterPage() {
   const [showSenha, setShowSenha] = useState(false);
@@ -123,7 +132,7 @@ export default function RegisterPage() {
         refreshToken
       );
 
-      toast.success(`Cadastro realizado! Bem-vindo(a), ${usuario.nome}! ✈️`);
+      toast.success(`Cadastro realizado! Bem-vindo(a), ${usuario.nome}!`);
       navigate('/hospede');
     } catch (error: any) {
       console.error(error);
@@ -135,65 +144,134 @@ export default function RegisterPage() {
   };
 
   return (
-    <Box sx={{ bgcolor: 'background.default', minHeight: '100vh', pt: { xs: 8, md: 10 }, pb: 6 }}>
-      <Container maxWidth="md">
-        <Card sx={{ borderRadius: 5, boxShadow: '0 12px 40px rgba(0,0,0,0.06)', overflow: 'hidden' }}>
-          <CardContent sx={{ p: { xs: 3, md: 5 } }}>
-            {/* Header / Logo */}
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'center', mb: 4, textAlign: 'center' }}>
-              <Box
-                sx={{
-                  width: 52,
-                  height: 52,
-                  borderRadius: '16px',
-                  background: 'linear-gradient(135deg, #0097A7, #FF7043)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  boxShadow: '0 8px 20px rgba(0, 151, 167, 0.2)',
-                }}
-              >
-                <BeachAccess sx={{ color: 'white', fontSize: 30 }} />
-              </Box>
-              <Box>
-                <Typography variant="h4" sx={{ fontWeight: 800, fontFamily: '"Outfit", sans-serif' }}>
-                  Criar Conta Hóspede
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                  Cadastre-se para encontrar e reservar as melhores estadias no Rio Grande do Norte
-                </Typography>
-              </Box>
-            </Box>
+    <Box
+      sx={{
+        display: 'grid',
+        gridTemplateColumns: { xs: 'minmax(0, 1fr)', lg: 'minmax(0, 0.85fr) minmax(0, 1.15fr)' },
+        bgcolor: 'background.default',
+      }}
+    >
+      {/* ================= PAINEL DE MARCA (desktop) ================= */}
+      <Box
+        component="aside"
+        aria-label="Sobre o HospedaRN"
+        sx={{
+          display: { xs: 'none', lg: 'flex' },
+          flexDirection: 'column',
+          justifyContent: 'space-between',
+          gap: 6,
+          bgcolor: 'primary.dark',
+          color: 'primary.contrastText',
+          position: 'relative',
+          overflow: 'hidden',
+          p: 6,
+        }}
+      >
+        <Box
+          aria-hidden
+          sx={(t) => ({
+            position: 'absolute',
+            width: 420,
+            height: 420,
+            borderRadius: '50%',
+            top: -160,
+            right: -140,
+            border: `1px solid ${alpha(t.palette.primary.contrastText, 0.16)}`,
+            bgcolor: alpha(t.palette.primary.contrastText, 0.04),
+            pointerEvents: 'none',
+          })}
+        />
 
-            <form onSubmit={handleSubmit(onSubmit)}>
-              <Grid container spacing={4}>
-                {/* ================= LEFT COLUMN: MANDATORY FIELDS ================= */}
-                <Grid size={{ xs: 12, md: 6 }}>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 700, color: 'primary.main', mb: 2 }}>
-                    Informações Obrigatórias
-                  </Typography>
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
-                    <TextField
-                      {...register('nome')}
-                      label="Nome Completo"
-                      fullWidth
-                      error={!!errors.nome}
-                      helperText={errors.nome?.message}
-                      slotProps={{
-                        input: {
-                          startAdornment: (
-                            <InputAdornment position="start">
-                              <Person sx={{ color: 'text.secondary', fontSize: 20 }} />
-                            </InputAdornment>
-                          ),
-                        },
-                      }}
-                    />
+        <Box sx={{ position: 'relative' }}>
+          <Logo size={40} onDark to="/" />
+        </Box>
+
+        <Box sx={{ position: 'relative' }}>
+          <Typography variant="overline" component="p" sx={{ color: 'inherit', opacity: 0.72, mb: 1.5 }}>
+            Nova conta de hóspede
+          </Typography>
+          <Typography variant="h3" component="p" sx={{ color: 'inherit', maxWidth: 420, letterSpacing: '-0.02em' }}>
+            Crie sua conta e reserve com tranquilidade.
+          </Typography>
+          <Typography variant="body1" sx={{ color: 'inherit', opacity: 0.82, mt: 2.5, maxWidth: 400 }}>
+            Leva poucos minutos. Depois é só escolher a hospedagem e enviar a solicitação.
+          </Typography>
+
+          <Stack spacing={1.5} sx={{ mt: 4 }}>
+            {brandHighlights.map((highlight) => (
+              <Stack key={highlight} direction="row" spacing={1.5} sx={{ alignItems: 'flex-start' }}>
+                <CheckCircleOutlined
+                  aria-hidden
+                  sx={{ fontSize: 20, color: 'inherit', opacity: 0.85, mt: 0.25, flexShrink: 0 }}
+                />
+                <Typography variant="body2" sx={{ color: 'inherit', opacity: 0.88 }}>
+                  {highlight}
+                </Typography>
+              </Stack>
+            ))}
+          </Stack>
+        </Box>
+
+        <Typography variant="caption" sx={{ color: 'inherit', opacity: 0.6, position: 'relative' }}>
+          Rio Grande do Norte · Brasil
+        </Typography>
+      </Box>
+
+      {/* ================= FORMULÁRIO ================= */}
+      <Box sx={{ px: { xs: 2, sm: 4 }, py: { xs: 4, md: 6 } }}>
+        <Box sx={{ width: '100%', maxWidth: 760, mx: 'auto' }}>
+          {/* Marca no topo (mobile/tablet) */}
+          <Box sx={{ display: { xs: 'flex', lg: 'none' }, justifyContent: 'center', mb: 3 }}>
+            <Logo size={38} to="/" />
+          </Box>
+
+          <Card>
+            <CardContent sx={{ p: { xs: 3, sm: 4 } }}>
+              <Box component="header" sx={{ mb: 3 }}>
+                <Typography variant="overline" component="p" color="primary">
+                  Criar conta
+                </Typography>
+                <Typography variant="h4" component="h1" sx={{ mt: 0.5 }}>
+                  Criar conta de hóspede
+                </Typography>
+                <Typography variant="body2" color="textSecondary" sx={{ mt: 1, maxWidth: 520 }}>
+                  Cadastre-se para encontrar e reservar as melhores estadias no Rio Grande do Norte.
+                </Typography>
+              </Box>
+
+              <Box component="form" noValidate onSubmit={handleSubmit(onSubmit)}>
+                <FormSection
+                  title="Informações obrigatórias"
+                  description="Dados usados para identificar você e liberar suas reservas."
+                >
+                  <FormGrid columns={2}>
+                    <FormSpan span={2}>
+                      <TextField
+                        id="register-nome"
+                        {...register('nome')}
+                        label="Nome completo"
+                        autoComplete="name"
+                        fullWidth
+                        error={!!errors.nome}
+                        helperText={errors.nome?.message}
+                        slotProps={{
+                          input: {
+                            startAdornment: (
+                              <InputAdornment position="start">
+                                <Person aria-hidden sx={{ color: 'text.secondary', fontSize: 20 }} />
+                              </InputAdornment>
+                            ),
+                          },
+                        }}
+                      />
+                    </FormSpan>
 
                     <TextField
+                      id="register-cpf"
                       {...register('cpf')}
                       label="CPF"
                       placeholder="000.000.000-00"
+                      autoComplete="off"
                       fullWidth
                       error={!!errors.cpf}
                       helperText={errors.cpf?.message}
@@ -205,7 +283,7 @@ export default function RegisterPage() {
                         input: {
                           startAdornment: (
                             <InputAdornment position="start">
-                              <ContactPage sx={{ color: 'text.secondary', fontSize: 20 }} />
+                              <ContactPage aria-hidden sx={{ color: 'text.secondary', fontSize: 20 }} />
                             </InputAdornment>
                           ),
                         },
@@ -213,9 +291,11 @@ export default function RegisterPage() {
                     />
 
                     <TextField
+                      id="register-data-nascimento"
                       {...register('dataNascimento')}
-                      label="Data de Nascimento"
+                      label="Data de nascimento"
                       type="date"
+                      autoComplete="bday"
                       fullWidth
                       error={!!errors.dataNascimento}
                       helperText={errors.dataNascimento?.message}
@@ -226,7 +306,7 @@ export default function RegisterPage() {
                         input: {
                           startAdornment: (
                             <InputAdornment position="start">
-                              <CalendarToday sx={{ color: 'text.secondary', fontSize: 18 }} />
+                              <CalendarToday aria-hidden sx={{ color: 'text.secondary', fontSize: 18 }} />
                             </InputAdornment>
                           ),
                         },
@@ -234,9 +314,11 @@ export default function RegisterPage() {
                     />
 
                     <TextField
+                      id="register-telefone"
                       {...register('telefone')}
                       label="Celular"
                       placeholder="(84) 99999-9999"
+                      autoComplete="tel"
                       fullWidth
                       error={!!errors.telefone}
                       helperText={errors.telefone?.message}
@@ -248,7 +330,7 @@ export default function RegisterPage() {
                         input: {
                           startAdornment: (
                             <InputAdornment position="start">
-                              <Phone sx={{ color: 'text.secondary', fontSize: 20 }} />
+                              <Phone aria-hidden sx={{ color: 'text.secondary', fontSize: 20 }} />
                             </InputAdornment>
                           ),
                         },
@@ -256,8 +338,11 @@ export default function RegisterPage() {
                     />
 
                     <TextField
+                      id="register-email"
                       {...register('email')}
                       label="E-mail"
+                      type="email"
+                      autoComplete="email"
                       fullWidth
                       error={!!errors.email}
                       helperText={errors.email?.message}
@@ -265,7 +350,7 @@ export default function RegisterPage() {
                         input: {
                           startAdornment: (
                             <InputAdornment position="start">
-                              <Email sx={{ color: 'text.secondary', fontSize: 20 }} />
+                              <Email aria-hidden sx={{ color: 'text.secondary', fontSize: 20 }} />
                             </InputAdornment>
                           ),
                         },
@@ -273,9 +358,11 @@ export default function RegisterPage() {
                     />
 
                     <TextField
+                      id="register-senha"
                       {...register('senha')}
                       label="Senha"
                       type={showSenha ? 'text' : 'password'}
+                      autoComplete="new-password"
                       fullWidth
                       error={!!errors.senha}
                       helperText={errors.senha?.message}
@@ -283,12 +370,16 @@ export default function RegisterPage() {
                         input: {
                           startAdornment: (
                             <InputAdornment position="start">
-                              <Lock sx={{ color: 'text.secondary', fontSize: 20 }} />
+                              <Lock aria-hidden sx={{ color: 'text.secondary', fontSize: 20 }} />
                             </InputAdornment>
                           ),
                           endAdornment: (
                             <InputAdornment position="end">
-                              <IconButton onClick={() => setShowSenha(!showSenha)} edge="end">
+                              <IconButton
+                                onClick={() => setShowSenha(!showSenha)}
+                                edge="end"
+                                aria-label={showSenha ? 'Ocultar senha' : 'Mostrar senha'}
+                              >
                                 {showSenha ? <VisibilityOff /> : <Visibility />}
                               </IconButton>
                             </InputAdornment>
@@ -298,9 +389,11 @@ export default function RegisterPage() {
                     />
 
                     <TextField
+                      id="register-confirmar-senha"
                       {...register('confirmarSenha')}
-                      label="Confirmar Senha"
+                      label="Confirmar senha"
                       type={showConfirmarSenha ? 'text' : 'password'}
+                      autoComplete="new-password"
                       fullWidth
                       error={!!errors.confirmarSenha}
                       helperText={errors.confirmarSenha?.message}
@@ -308,12 +401,18 @@ export default function RegisterPage() {
                         input: {
                           startAdornment: (
                             <InputAdornment position="start">
-                              <Lock sx={{ color: 'text.secondary', fontSize: 20 }} />
+                              <Lock aria-hidden sx={{ color: 'text.secondary', fontSize: 20 }} />
                             </InputAdornment>
                           ),
                           endAdornment: (
                             <InputAdornment position="end">
-                              <IconButton onClick={() => setShowConfirmarSenha(!showConfirmarSenha)} edge="end">
+                              <IconButton
+                                onClick={() => setShowConfirmarSenha(!showConfirmarSenha)}
+                                edge="end"
+                                aria-label={
+                                  showConfirmarSenha ? 'Ocultar confirmação de senha' : 'Mostrar confirmação de senha'
+                                }
+                              >
                                 {showConfirmarSenha ? <VisibilityOff /> : <Visibility />}
                               </IconButton>
                             </InputAdornment>
@@ -321,19 +420,22 @@ export default function RegisterPage() {
                         },
                       }}
                     />
-                  </Box>
-                </Grid>
+                  </FormGrid>
+                </FormSection>
 
-                {/* ================= RIGHT COLUMN: OPTIONAL FIELDS ================= */}
-                <Grid size={{ xs: 12, md: 6 }}>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 700, color: 'text.secondary', mb: 2 }}>
-                    Informações Opcionais
-                  </Typography>
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+                <Divider sx={{ my: 3.5 }} />
+
+                <FormSection
+                  title="Informações opcionais"
+                  description="Ajudam o anfitrião a preparar sua chegada. Você pode preencher depois."
+                >
+                  <FormGrid columns={2}>
                     <TextField
+                      id="register-rg"
                       {...register('rg')}
                       label="RG"
                       placeholder="Somente números"
+                      autoComplete="off"
                       fullWidth
                       error={!!errors.rg}
                       helperText={errors.rg?.message}
@@ -341,7 +443,7 @@ export default function RegisterPage() {
                         input: {
                           startAdornment: (
                             <InputAdornment position="start">
-                              <ContactPage sx={{ color: 'text.secondary', fontSize: 20 }} />
+                              <ContactPage aria-hidden sx={{ color: 'text.secondary', fontSize: 20 }} />
                             </InputAdornment>
                           ),
                         },
@@ -349,9 +451,11 @@ export default function RegisterPage() {
                     />
 
                     <TextField
+                      id="register-nacionalidade"
                       {...register('nacionalidade')}
                       label="Nacionalidade"
                       placeholder="Ex: Brasileira"
+                      autoComplete="off"
                       fullWidth
                       error={!!errors.nacionalidade}
                       helperText={errors.nacionalidade?.message}
@@ -359,97 +463,88 @@ export default function RegisterPage() {
                         input: {
                           startAdornment: (
                             <InputAdornment position="start">
-                              <Public sx={{ color: 'text.secondary', fontSize: 20 }} />
+                              <Public aria-hidden sx={{ color: 'text.secondary', fontSize: 20 }} />
                             </InputAdornment>
                           ),
                         },
                       }}
                     />
 
-                    <TextField
-                      {...register('contatoEmergencia')}
-                      label="Contato de Emergência"
-                      placeholder="Nome e telefone"
-                      fullWidth
-                      error={!!errors.contatoEmergencia}
-                      helperText={errors.contatoEmergencia?.message}
-                      slotProps={{
-                        input: {
-                          startAdornment: (
-                            <InputAdornment position="start">
-                              <PhoneCallback sx={{ color: 'text.secondary', fontSize: 20 }} />
-                            </InputAdornment>
-                          ),
-                        },
-                      }}
-                    />
+                    <FormSpan span={2}>
+                      <TextField
+                        id="register-contato-emergencia"
+                        {...register('contatoEmergencia')}
+                        label="Contato de emergência"
+                        placeholder="Nome e telefone"
+                        autoComplete="off"
+                        fullWidth
+                        error={!!errors.contatoEmergencia}
+                        helperText={errors.contatoEmergencia?.message}
+                        slotProps={{
+                          input: {
+                            startAdornment: (
+                              <InputAdornment position="start">
+                                <PhoneCallback aria-hidden sx={{ color: 'text.secondary', fontSize: 20 }} />
+                              </InputAdornment>
+                            ),
+                          },
+                        }}
+                      />
+                    </FormSpan>
 
-                    <TextField
-                      {...register('endereco')}
-                      label="Endereço Completo"
-                      placeholder="Rua, Número, Bairro, Cidade - UF"
-                      multiline
-                      rows={4.2}
-                      fullWidth
-                      error={!!errors.endereco}
-                      helperText={errors.endereco?.message}
-                      slotProps={{
-                        input: {
-                          startAdornment: (
-                            <InputAdornment position="start" sx={{ alignSelf: 'flex-start', mt: 1 }}>
-                              <Home sx={{ color: 'text.secondary', fontSize: 20 }} />
-                            </InputAdornment>
-                          ),
-                        },
-                      }}
-                    />
-                  </Box>
-                </Grid>
-              </Grid>
+                    <FormSpan span={2}>
+                      <TextField
+                        id="register-endereco"
+                        {...register('endereco')}
+                        label="Endereço completo"
+                        placeholder="Rua, número, bairro, cidade - UF"
+                        autoComplete="street-address"
+                        multiline
+                        rows={3}
+                        fullWidth
+                        error={!!errors.endereco}
+                        helperText={errors.endereco?.message}
+                        slotProps={{
+                          input: {
+                            startAdornment: (
+                              <InputAdornment position="start" sx={{ alignSelf: 'flex-start', mt: 1 }}>
+                                <Home aria-hidden sx={{ color: 'text.secondary', fontSize: 20 }} />
+                              </InputAdornment>
+                            ),
+                          },
+                        }}
+                      />
+                    </FormSpan>
+                  </FormGrid>
+                </FormSection>
 
-              <Divider sx={{ my: 4 }} />
+                <Divider sx={{ my: 3.5 }} />
 
-              {/* Submit button */}
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'center' }}>
-                <Button
-                  type="submit"
-                  variant="contained"
-                  color="primary"
-                  size="large"
-                  disabled={loading}
-                  sx={{
-                    width: { xs: '100%', sm: 280 },
-                    py: 1.5,
-                    borderRadius: 3,
-                    fontWeight: 700,
-                    fontSize: '1rem',
-                    boxShadow: 'none',
-                    '&:hover': {
-                      boxShadow: '0 4px 14px rgba(0,151,167,0.3)',
-                    },
-                  }}
-                >
-                  {loading ? <CircularProgress size={24} color="inherit" /> : 'Realizar Cadastro'}
-                </Button>
-
-                <Typography variant="body2" color="text.secondary">
-                  Já possui uma conta?{' '}
-                  <Link
-                    to="/login"
-                    style={{
-                      textDecoration: 'none',
-                      fontWeight: 600,
-                      color: '#0097A7',
-                    }}
+                <Box sx={{ display: 'grid', gap: 2 }}>
+                  <Button
+                    type="submit"
+                    variant="contained"
+                    color="primary"
+                    size="large"
+                    fullWidth
+                    disabled={loading}
+                    aria-busy={loading}
                   >
-                    Entre aqui
-                  </Link>
-                </Typography>
+                    {loading ? <CircularProgress size={24} color="inherit" /> : 'Realizar cadastro'}
+                  </Button>
+
+                  <Typography variant="body2" color="textSecondary" sx={{ textAlign: 'center' }}>
+                    Já possui uma conta?{' '}
+                    <Link component={RouterLink} to="/login" variant="body2" sx={{ fontWeight: 600 }}>
+                      Entrar
+                    </Link>
+                  </Typography>
+                </Box>
               </Box>
-            </form>
-          </CardContent>
-        </Card>
-      </Container>
+            </CardContent>
+          </Card>
+        </Box>
+      </Box>
     </Box>
   );
 }
